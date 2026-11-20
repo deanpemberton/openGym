@@ -139,6 +139,8 @@ class OpenGymApp extends Application.AppBase {
         if (_timer != null) {
             _timer.stop();
         }
+        // Flush the last wrist HR samples before closing; they remain in the acked outbox.
+        Workout.flushTrace();
         // The app closing mid-workout keeps what Garmin Connect recorded so far.
         Workout.end(true);
         G.save();
@@ -159,6 +161,7 @@ class OpenGymApp extends Application.AppBase {
         var r0 = G.state["rest"];
         var ended = Core.applySnapshot(G.state, data);
         if (ended != null) {
+            Workout.flushTrace();
             Workout.end(true);
             ended["hr"] = Workout.hrTotals();
             Actions.ended(ended);
@@ -368,6 +371,13 @@ module Workout {
     var allSum = 0;
     var allN = 0;
     var allMax = 0;
+    // The big watches keep a short HR sample window, not a second-by-second file.
+    // A batch travels through the existing idempotent/acked Connect IQ outbox.
+    var traceBuf = [];
+    var traceLast = 0l;
+    var traceWid = null;
+    const TRACE_INTERVAL_MS = 10000l;
+    const TRACE_BATCH_SIZE = 24;
 
     function recordingOn() {
         try {
@@ -379,6 +389,12 @@ module Workout {
     }
 
     function begin() {
+        var active = Core.dictOf(G.state["w"]);
+        if (active != null) {
+            traceWid = Core.strOf(active["id"]);
+            traceBuf = [];
+            traceLast = 0l;
+        }
         if (Sensor has :setEnabledSensors) {
             Sensor.setEnabledSensors([Sensor.SENSOR_HEARTRATE]);
         }
@@ -425,6 +441,30 @@ module Workout {
         }
     }
 
+    (:small)
+    function traceSample(h) { }
+    (:big)
+    function traceSample(h) {
+        if (G.state["w"] == null || h == null || h <= 0) { return; }
+        var t = Core.nowMs();
+        if (traceLast > 0l && t - traceLast < TRACE_INTERVAL_MS) { return; }
+        traceLast = t;
+        traceBuf.add([t, h]);
+        if (traceBuf.size() >= TRACE_BATCH_SIZE) { flushTrace(); }
+    }
+
+    (:small)
+    function flushTrace() { }
+    (:big)
+    function flushTrace() {
+        if (traceWid == null || traceBuf.size() == 0) { return; }
+        // Send the full timestamps, not extrapolated set averages; the phone deduplicates samples.
+        var samples = traceBuf;
+        traceBuf = [];
+        Link.send({ "id" => Core.newId(), "type" => "hrTrace", "wid" => traceWid,
+            "at" => samples[samples.size() - 1][0], "samples" => samples });
+    }
+
     function sample() {
         var info = Activity.getActivityInfo();
         var h = info == null ? null : info.currentHeartRate;
@@ -432,6 +472,7 @@ module Workout {
         if (h == null || h <= 0 || G.state["w"] == null) {
             return;
         }
+        traceSample(h);
         setSum += h; setN += 1; if (h > setMax) { setMax = h; }
         allSum += h; allN += 1; if (h > allMax) { allMax = h; }
     }
