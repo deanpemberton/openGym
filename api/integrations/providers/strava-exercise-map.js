@@ -156,6 +156,9 @@ export function normalizedExerciseName(input) {
   return String(input || '')
     .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/\bbiceps\b/g, 'bicep').replace(/\btriceps\b/g, 'tricep')
+    .replace(/\bflye\b/g, 'fly').replace(/\brows\b/g, 'row')
+    .replace(/\braises\b/g, 'raise')
     .replace(/\b(?:v(?:ersion)?\.?\s*\d+)\b/g, '')
     .replace(/\((?:male|female|form check|version\s*\d+)\)/g, '')
     .replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -168,6 +171,15 @@ for (const id of STRAVA_SUPPORTED_EXERCISES) {
   // A collision must not silently map an ambiguous exercise to one type.
   SUPPORTED_BY_NAME.set(key, SUPPORTED_BY_NAME.has(key) ? null : id);
 }
+for (const id of STRAVA_SUPPORTED_EXERCISES) {
+  if (!id.endsWith('_GENERIC')) continue;
+  const key = normalizedExerciseName(id.slice(0,-'_GENERIC'.length));
+  if (!SUPPORTED_BY_NAME.has(key)) SUPPORTED_BY_NAME.set(key,id);
+}
+const CANONICAL_LEGACY_ALIASES = new Map(Object.entries(LEGACY_ALIASES)
+  .map(([key,type])=>[normalizedExerciseName(key),type]));
+const CANONICAL_EQUIVALENTS = new Map(Object.entries(NAME_EQUIVALENTS)
+  .map(([key,type])=>[normalizedExerciseName(key),type]));
 function candidateNames(name) {
   const all = new Set([name]);
   for (const key of [...all]) {
@@ -323,7 +335,7 @@ export function stravaExerciseMapping(ex) {
   }
   if (candidates.size === 1) return {type:[...candidates][0],kind:'exact'};
   if (candidates.size > 1) return {type:null,kind:'unsupported'};
-  const equivalent = LEGACY_ALIASES[name] || NAME_EQUIVALENTS[name];
+  const equivalent = CANONICAL_LEGACY_ALIASES.get(name) || CANONICAL_EQUIVALENTS.get(name);
   if (equivalent) return {type:sanitize(equivalent),kind:'equivalent'};
   // For custom exercises, don't infer a movement from an arbitrary label.
   // Exact documented names and curated synonyms are supported above.
