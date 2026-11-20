@@ -72,7 +72,14 @@ export function strengthSets(workout) {
 }
 export function strengthJson(workout, { timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } = {}) {
   const time = typeof workout.startedAt === 'string' ? Date.parse(workout.startedAt) : NaN;
-  const duration = Number(workout.durationMin) * 60;
+  // openGym rounds durationMin to whole minutes in its event payload. A
+  // legitimately completed 12-second test session therefore has durationMin=0.
+  // Prefer the original end/start timestamps to preserve second precision.
+  const end = typeof workout.endedAt === 'string' ? Date.parse(workout.endedAt) : NaN;
+  const measured = Number.isFinite(time) && Number.isFinite(end) && end > time
+    ? Math.max(1, Math.round((end - time) / 1000)) : NaN;
+  const fallback = Number(workout.durationMin) > 0 ? Math.round(Number(workout.durationMin) * 60) : NaN;
+  const duration = Number.isFinite(measured) ? measured : fallback;
   const { sets, unmapped } = strengthSets(workout);
   if (!sets.length || !Number.isFinite(time) || !Number.isFinite(duration) || duration <= 0)
     return { json: null, unmapped, reason: !sets.length ? 'No mapped exercise sets' : 'Missing start time or duration' };
