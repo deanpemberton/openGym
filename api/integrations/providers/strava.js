@@ -18,6 +18,8 @@
  * `fetchFn` is the network, injectable for the tests: (url, { method, headers, body }) →
  * { status, json() }. */
 
+import { deliverStructuredStrength } from './strava-strength.js';
+
 export const AUTHORIZE_URL = 'https://www.strava.com/oauth/authorize';
 export const TOKEN_URL = 'https://www.strava.com/oauth/token';
 export const ACTIVITY_URL = 'https://www.strava.com/api/v3/activities';
@@ -219,6 +221,17 @@ export function stravaProvider({ env = process.env, fetchFn = globalThis.fetch, 
         const r = await refresh(reveal, reseal);
         if (r.error) return r.error;
         token = r.access;
+      }
+      // Opt-in, reusing the same sealed OAuth credentials and durable outbox.
+      // The outbox retains an accepted upload ID across restarts; never double-POST.
+      if (String(env.STRAVA_STRUCTURED_STRENGTH || '') === '1' && act.sport_type === 'WeightTraining') {
+        let result = await deliverStructuredStrength(job, token, w, act, { fetchFn, timezone: env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' });
+        if (result.status === 401) {
+          const renewed = await refresh(reveal, reseal);
+          if (renewed.error) return renewed.error;
+          result = await deliverStructuredStrength(job, renewed.access, w, act, { fetchFn, timezone: env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' });
+        }
+        return result;
       }
       let res;
       try { res = await authed(fetchFn, ACTIVITY_URL, token, act); }
