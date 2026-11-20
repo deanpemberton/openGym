@@ -98,22 +98,29 @@ export function stravaStrengthFit(w) {
   let n = 0;
   for (const exercise of Array.isArray(w.exercises) ? w.exercises : []) {
     for (const row of Array.isArray(exercise.sets) ? exercise.sets : []) {
-      if (!row || row.warmup || row.sides) continue;
-      const reps = Math.round(Number(row.reps) || 0), seconds = Number(row.seconds) || 0;
-      if (!(reps > 0 || seconds > 0)) continue;
-      const finish = Number.isFinite(row.at) ? Math.max(start, Math.min(end, row.at)) : null;
-      const estimated = Math.max(15000, Math.min(120000, seconds > 0 ? seconds * 1000 : reps * 3000));
-      const tick = finish ?? start + Math.min(ms, Math.round(ms * (++n) / Math.max(1, (w.totals?.sets || 1))));
-      const from = Math.max(start, tick - estimated);
-      const weight = Number(row.weight);
-      timeline.push({ at: tick, m: { global: 225, fields: [
-        [254,'uint32',atFit(tick)], [0,'uint32',Math.max(1000,tick - from)],
-        [3,'uint16',reps > 0 ? reps : null],
-        [4,'uint16',Number.isFinite(weight) && weight > 0 ? weight * (w.unit === 'lb' ? 0.45359237 : 1) * 16 : null],
-        [5,'uint8',1], [6,'uint32',atFit(from)], [7,'uint16',catOf(exercise.name)],
-        [9,'uint16',w.unit === 'lb' ? 2 : 1], [10,'uint16',n],
-      ] } });
-      n++;
+      if (!row || row.warmup) continue;
+      // A bilateral row may carry a left and a right set. Preserve both, never
+      // silently discard unilateral strength work from the FIT upload.
+      const parts = row.sides ? [row.sides.left, row.sides.right] : [row];
+      for (const part of parts) {
+        if (!part) continue;
+        const reps = Math.round(Number(part.reps) || 0), seconds = Number(part.seconds) || 0;
+        if (!(reps > 0 || seconds > 0)) continue;
+        const finish = Number.isFinite(part.at) ? Math.max(start, Math.min(end, part.at))
+          : Number.isFinite(row.at) ? Math.max(start, Math.min(end, row.at)) : null;
+        const estimated = Math.max(15000, Math.min(120000, seconds > 0 ? seconds * 1000 : reps * 3000));
+        const index = n++;
+        const tick = finish ?? Math.min(end, start + Math.round(ms * (index + 1) / Math.max(1, w.totals?.sets || 1)));
+        const from = Math.max(start, tick - estimated);
+        const weight = Number(part.weight);
+        timeline.push({ at: tick, m: { global: 225, fields: [
+          [254,'uint32',atFit(tick)], [0,'uint32',Math.max(1000,tick - from)],
+          [3,'uint16',reps > 0 ? reps : null],
+          [4,'uint16',Number.isFinite(weight) && weight > 0 ? weight * (w.unit === 'lb' ? 0.45359237 : 1) * 16 : null],
+          [5,'uint8',1], [6,'uint32',atFit(from)], [7,'uint16',catOf(exercise.name)],
+          [9,'uint16',w.unit === 'lb' ? 2 : 1], [10,'uint16',index],
+        ] } });
+      }
     }
   }
   timeline.sort((a, b) => a.at - b.at).forEach(x => messages.push(x.m));
