@@ -63,12 +63,13 @@ export function createIntegrations({ dataDir, secret, env = process.env, now = D
     store = createStore({ dir, key, now });
     outbox = createOutbox({
       file: path.join(dir, 'outbox.json'), now,
-      deliver: job => {
+      deliver: (job, checkpoint) => {
         const p = providers[job.provider];
         const rec = store.get(job.uid, job.conn);
         if (!p || !rec) return { ok: false, retry: false, code: 'gone', msg: 'Disconnected.' };
         if (rec.paused) return { defer: 3600_000 };
-        return p.deliver(job, name => store.reveal(job.uid, rec, name), extras(job.uid, rec));
+        return p.deliver(job, name => store.reveal(job.uid, rec, name),
+          { ...extras(job.uid, rec), checkpoint });
       },
       rateOf: job => {
         const p = providers[job.provider];
@@ -84,6 +85,10 @@ export function createIntegrations({ dataDir, secret, env = process.env, now = D
   // was renewed), and read the connection's own settings.
   const extras = (uid, rec) => ({
     info: { ...rec.info },
+    // Domain-separated HMAC key: external upload IDs contain no raw workout
+    // identifier, device identifier, or internal profile identifier.
+    externalIdKey: crypto.createHmac('sha256', String(secret))
+      .update('opengym-strava-external-id:v1').digest(),
     reseal: map => store.update(uid, rec.id, r => { for (const [k, v] of Object.entries(map)) r.secrets[k] = store.seal(uid, rec.id, k, v); }),
   });
 
