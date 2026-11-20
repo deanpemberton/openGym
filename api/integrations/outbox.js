@@ -86,10 +86,32 @@ export function createOutbox({ file, deliver, rateOf = () => [], onSettled = () 
     if (keys.length > DONE_MAX) keys = keys.sort((a, b) => st.done[a] - st.done[b]).slice(-DONE_MAX);
     if (keys.length !== Object.keys(st.done).length) st.done = Object.fromEntries(keys.map(k => [k, st.done[k]]));
   }
-  function persist() {
+  function persistStrict() {
     prune();
-    try { atomicWrite(file, JSON.stringify(st), 0o600); }
+    // A Strava upload checkpoint must reach durable storage before any
+    // network POST or additional polling; never swallow a failed write.
+    atomicWrite(file, JSON.stringify(st), 0o600);
+  }
+  function persist() {
+    try { persistStrict(); }
     catch (e) { console.error('integrations: could not save the outbox', e.message); }
+  }
+  // Only the Strava upload's resumable state may be checkpointed by a provider.
+  // Never accept changes to the connection, owner, event, or payload.
+  function checkpoint(j, patch) {
+    if (!st.jobs.includes(j) || !patch || typeof patch !== 'object') throw new Error('outbox checkpoint rejected');
+    const names = Object.keys(patch);
+    if (!names.length || names.some(name => !['stravaUploadAttempted', 'stravaUploadId'].includes(name)))
+      throw new Error('outbox checkpoint fields rejected');
+    if ('stravaUploadAttempted' in patch && typeof patch.stravaUploadAttempted !== 'boolean')
+      throw new Error('outbox checkpoint flag rejected');
+    if ('stravaUploadId' in patch &&
+        (typeof patch.stravaUploadId !== 'string' || !/^\\d{1,40}$/.test(patch.stravaUploadId)))
+      throw new Error('outbox checkpoint upload ID rejected');
+    // In-memory state is deliberately conservative if persistence fails:
+    // the caller must fail closed rather than issue another upload.
+    Object.assign(j, patch);
+    persistStrict();
   }
   const soon = () => {
     if (kick || !timer) return;
@@ -121,7 +143,7 @@ export function createOutbox({ file, deliver, rateOf = () => [], onSettled = () 
     }
     j.running = true;
     let res;
-    try { res = await deliver(j); }
+    try { res = await deliver(j, patch => checkpoint(j, patch)); }
     catch (e) { res = { ok: false, retry: true, msg: e?.message || 'delivery failed' }; }
     delete j.running;
     if (!st.jobs.includes(j)) return;                  // dropped meanwhile (disconnected)
