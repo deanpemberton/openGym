@@ -2,6 +2,7 @@
 // docs/GARMIN.md has the whole picture; Core.mc has the session logic.
 import Toybox.Activity;
 import Toybox.ActivityRecording;
+import Toybox.FitContributor;
 import Toybox.Application;
 import Toybox.Application.Storage;
 import Toybox.Attention;
@@ -364,6 +365,7 @@ class SendListener extends Communications.ConnectionListener {
 //! "Garmin Connect and the health apps").
 module Workout {
     var session = null;
+    var lapDetailField = null;
     // since the last set: sum, count, max; and over the whole workout
     var setSum = 0;
     var setN = 0;
@@ -386,6 +388,53 @@ module Workout {
         } catch (ex) {
             return true;
         }
+    }
+
+    // Optional native Garmin lap on each completed set. Defaults off to avoid the global
+    // spoken "Lap 1" prompts. The watch menu and Connect IQ settings use the same property.
+    function lapsOn() {
+        try {
+            var v = Application.Properties.getValue("setLaps");
+            return v == true;
+        } catch (ex) {
+            return false;
+        }
+    }
+
+    function toggleLaps() {
+        var next = !lapsOn();
+        try {
+            Application.Properties.setValue("setLaps", next);
+        } catch (ex) {
+            // Leave the existing setting in place when writes are unavailable.
+        }
+    }
+
+    //! FIT contributor stores per-lap exercise details, not a replacement for Garmin's
+    //! standard numbered "Lap N" title. Some Connect clients won't display custom text.
+    function lap(e, si, side, w, r, sec) {
+        if (!lapsOn() || session == null || !session.isRecording()) { return; }
+        if (lapDetailField != null) {
+            try {
+                var name = e == null ? "" : Core.strOf(e["name"]);
+                if (name.length() == 0 && e != null) { name = Core.strOf(e["id"]); }
+                if (name.length() > 28) { name = name.substring(0, 28); }
+                var details = name + " #" + (si + 1).toString();
+                if (side != null) { details += " " + Core.strOf(side); }
+                if (sec != null && sec > 0) {
+                    details += " " + Core.toI(sec, 0).toString() + "s";
+                } else {
+                    if (w != null) { details += " " + Core.strOf(w) + Core.unitOf(G.state, e); }
+                    if (r != null) { details += " x" + Core.strOf(r); }
+                }
+                if (details.length() > 62) { details = details.substring(0, 62); }
+                lapDetailField.setData(details);
+            } catch (ex) {
+                // A full/unsupported developer field must never stop a strength workout.
+                lapDetailField = null;
+            }
+        }
+        try { session.addLap(); } catch (ex) { /* Garmin recording continues without this lap */ }
     }
 
     function begin() {
@@ -412,6 +461,14 @@ module Workout {
                 :sport => Activity.SPORT_TRAINING,
                 :subSport => Activity.SUB_SPORT_STRENGTH_TRAINING
             });
+            lapDetailField = null;
+            try {
+                lapDetailField = session.createField("exercise_set", 0,
+                    FitContributor.DATA_TYPE_STRING,
+                    { :mesgType => FitContributor.MESG_TYPE_LAP, :count => 64 });
+            } catch (ex) {
+                // On unsupported devices the native laps still work without text metadata.
+            }
             session.start();
             G.state["rec"] = w["id"];
         } catch (ex) {
@@ -435,6 +492,7 @@ module Workout {
                 // nothing to save
             }
             session = null;
+            lapDetailField = null;
         }
         if (G.state["w"] == null && (Sensor has :setEnabledSensors)) {
             Sensor.setEnabledSensors([]);
