@@ -106,7 +106,7 @@ export function createOutbox({ file, deliver, rateOf = () => [], onSettled = () 
     if ('stravaUploadAttempted' in patch && typeof patch.stravaUploadAttempted !== 'boolean')
       throw new Error('outbox checkpoint flag rejected');
     if ('stravaUploadId' in patch &&
-        (typeof patch.stravaUploadId !== 'string' || !/^\\d{1,40}$/.test(patch.stravaUploadId)))
+        (typeof patch.stravaUploadId !== 'string' || !/^\d{1,40}$/.test(patch.stravaUploadId)))
       throw new Error('outbox checkpoint upload ID rejected');
     // In-memory state is deliberately conservative if persistence fails:
     // the caller must fail closed rather than issue another upload.
