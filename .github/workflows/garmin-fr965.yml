@@ -4,7 +4,7 @@ name: Garmin FR965 PRG
 
 on:
   push:
-    branches: [main, 'ci-garmin-*']
+    branches: [main, 'ci-garmin-*', 'feature/garmin-*']
     paths:
       - 'frontend/garmin/**'
       - '.github/workflows/garmin-fr965.yml'
@@ -49,7 +49,7 @@ jobs:
       - name: Prepare private signing key
         shell: bash
         env:
-          GARMIN_KEY_BASE64: ${{ secrets.GARMIN_DEVELOPER_KEY }}
+          GARMIN_KEY_BASE64: ${{ github.ref == 'refs/heads/main' && secrets.GARMIN_DEVELOPER_KEY || '' }}
         run: |
           set -euo pipefail
           umask 077
