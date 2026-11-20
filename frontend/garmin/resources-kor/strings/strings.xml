@@ -68,4 +68,6 @@
     <string id="weight">무게</string>
     <string id="workout">운동</string>
     <string id="workout_saved">운동 저장됨</string>
+    <string id="exercise_set_detail">Exercise and set</string>
+    <string id="record_set_laps">세트별 랩 기록</string>
 </strings>

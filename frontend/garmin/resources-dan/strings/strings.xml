@@ -68,4 +68,6 @@
     <string id="weight">Vægt</string>
     <string id="workout">Træning</string>
     <string id="workout_saved">Træning gemt</string>
+    <string id="exercise_set_detail">Exercise and set</string>
+    <string id="record_set_laps">Omgang pr. sæt</string>
 </strings>

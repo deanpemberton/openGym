@@ -68,4 +68,6 @@
     <string id="weight">น้ำหนัก</string>
     <string id="workout">การฝึก</string>
     <string id="workout_saved">บันทึกการฝึกแล้ว</string>
+    <string id="exercise_set_detail">Exercise and set</string>
+    <string id="record_set_laps">รอบต่อเซต</string>
 </strings>

@@ -68,4 +68,6 @@
     <string id="weight">Svoris</string>
     <string id="workout">Treniruotė</string>
     <string id="workout_saved">Treniruotė išsaugota</string>
+    <string id="exercise_set_detail">Exercise and set</string>
+    <string id="record_set_laps">Ratai kiekvienai serijai</string>
 </strings>
