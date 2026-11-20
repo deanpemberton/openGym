@@ -91,3 +91,21 @@ test('strength off still means no strength activity, even with structured flag o
     assert.equal(s.calls.filter(x=>x.url===ACTIVITY_URL).length,0);
   }finally{fs.rmSync(dir,{recursive:true,force:true})}
 });
+
+test('all-unsupported strength session falls back to a manual activity instead of disappearing',async()=>{
+  const dir=tmp(),s=mockStrava();
+  try{
+    const h=createIntegrations({dataDir:dir,secret:SECRET,env:env(),fetchFn:s.fetchFn});
+    await connect(h,true);
+    const session={...workout,id:'w-unsupported',name:'Unmapped strength session',entries:[
+      {id:'custom-unmapped-strength-movement',sets:[{w:20,r:8,done:true}]},
+    ]};
+    assert.equal(h.onStateWrite('u1',{workouts:[]},{unit:'kg',workouts:[session]}),1);
+    await h._outbox().run();
+    assert.equal(s.uploads.length,0,'unsupported strength must not attempt a JSON upload');
+    const manual=s.calls.filter(c=>c.url===ACTIVITY_URL);
+    assert.equal(manual.length,1,'manual activity fallback must preserve the workout');
+    assert.equal(h._outbox().snapshot().jobs.length,0,'successful manual fallback clears the queue');
+    assert.equal(h._outbox().snapshot().failed.length,0);
+  }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
