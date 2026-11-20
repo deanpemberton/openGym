@@ -3,144 +3,14 @@
  * No network calls occur during import.
  * https://developers.strava.com/docs/uploads/
  */
-import { STRAVA_EXERCISE_TYPES } from './strava-exercises.js';
+import { stravaExerciseType } from './strava-exercise-map.js';
+export { stravaExerciseType } from './strava-exercise-map.js';
 
 export const STRUCTURED_UPLOAD_URL = 'https://www.strava.com/api/v3/uploads';
 
-// A small ID override table for openGym titles that differ from Strava's exact
-// identifiers. The full 572-type Strava vocabulary lives in strava-exercises.js.
-const MAPPING = Object.freeze({
-  '0025':'BARBELL_BENCH_PRESS','0294':'STANDING_DUMBBELL_BICEPS_CURL',
-  '0043':'BARBELL_SQUAT','0289':'DUMBBELL_BENCH_PRESS',
-  '0405':'SEATED_DUMBBELL_SHOULDER_PRESS','9698':'CHEST_SUPPORTED_ROW',
-  '1204':'SINGLE_ARM_LAT_PULLDOWN','4948':'SINGLE_ARM_LAT_PULLDOWN',
-  '0577':'MACHINE_CHEST_PRESS','11251':'CABLE_WOODCHOP',
-  '5609':'FACE_PULL','0868':'CABLE_CURL',
-  '0201':'CABLE_TRICEPS_PUSHDOWN','7384':'HIP_THRUST',
-  '5516':'MACHINE_HACK_SQUAT','2130':'WEIGHTED_DECLINE_CRUNCH',
-});
-
-// Curated semantic synonyms; unlike near-match/fuzzy matching, each is a
-// deliberately reviewed substitution. Never silently substitute another lift.
-const ALIASES = Object.freeze({
-  'barbell full squat':'BARBELL_SQUAT',
-  'barbell full squat back pov':'BARBELL_SQUAT',
-  'barbell full squat side pov':'BARBELL_SQUAT',
-  'dumbbell bicep curl':'STANDING_DUMBBELL_BICEPS_CURL',
-  'barbell bent over row':'BENT_OVER_BARBELL_ROW',
-  'dumbbell bent over row':'BENT_OVER_DUMBBELL_ROW',
-  'barbell incline bench press':'INCLINE_BARBELL_BENCH_PRESS',
-  'dumbbell incline bench press':'INCLINE_DUMBBELL_BENCH_PRESS',
-  'barbell close grip bench press':'CLOSE_GRIP_BARBELL_BENCH_PRESS',
-  'barbell wide bench press':'WIDE_GRIP_BARBELL_BENCH_PRESS',
-  'barbell sumo deadlift':'SUMO_DEADLIFT',
-  'barbell zercher squat':'ZERCHER_SQUAT',
-  'barbell full zercher squat':'ZERCHER_SQUAT',
-  'barbell overhead squat':'OVERHEAD_SQUAT',
-  'barbell seated shoulder press':'SEATED_BARBELL_PRESS',
-  'barbell seated overhead press':'SEATED_BARBELL_PRESS',
-  'barbell curl':'BARBELL_BICEPS_CURL',
-  'barbell clean and press':'DOUBLE_ARM_CLEAN_AND_PRESS_BARBELL',
-  'barbell jm bench press':'JM_PRESS',
-  'dumbbell seated shoulder press':'SEATED_DUMBBELL_SHOULDER_PRESS',
-  'dumbbell seated overhead press':'SEATED_DUMBBELL_SHOULDER_PRESS',
-  'dumbbell overhead press':'OVERHEAD_DUMBBELL_PRESS',
-  'dumbbell bulgarian split squat':'DUMBBELL_BULGARIAN_SPLIT_SQUATS',
-  'dumbbell bulgarian split squats':'DUMBBELL_BULGARIAN_SPLIT_SQUATS',
-  'dumbbell goblet squat':'DUMBBELL_GOBLET_SQUATS',
-  'cable one arm lat pulldown':'SINGLE_ARM_LAT_PULLDOWN',
-  'cable kneeling one arm lat pulldown':'SINGLE_ARM_LAT_PULLDOWN',
-  'cable standing face pull':'FACE_PULL',
-  'cable face pull':'FACE_PULL',
-  'cable kneeling woodchop':'CABLE_WOODCHOP',
-  'cable standing woodchop':'CABLE_WOODCHOP',
-  'cable pushdown':'CABLE_TRICEPS_PUSHDOWN',
-  'cable tricep pushdown':'CABLE_TRICEPS_PUSHDOWN',
-  'cable tricep extension':'CABLE_TRICEPS_PUSHDOWN',
-  'cable one arm tricep pushdown':'CABLE_SINGLE_ARM_TRICEPS_PUSHDOWN',
-  'cable standing crossover':'CABLE_CROSSOVER',
-  'cable rope hammer curl':'ROPE_CABLE_CURL',
-  'dumbbell bent over reverse fly':'DUMBBELL_REAR_DELT_FLY',
-  'dumbbell rear lateral raise':'DUMBBELL_REAR_DELT_FLY',
-  'dumbbell reverse fly':'DUMBBELL_REAR_DELT_FLY',
-  'lever hip thrust plate loaded':'HIP_THRUST',
-  'lever tricep extension':'MACHINE_TRICEP_EXTENSION',
-  'lever seated shoulder press':'MACHINE_SEATED_SHOULDER_PRESS',
-  'lever seated row':'MACHINE_SEATED_ROW',
-  'lever hack squat':'MACHINE_HACK_SQUAT',
-  'lever chest press':'MACHINE_CHEST_PRESS',
-  'lever incline chest press':'MACHINE_INCLINE_CHEST_PRESS',
-  'lever back extension':'MACHINE_BACK_EXTENSION',
-  'lever calf press':'MACHINE_CALF_PRESS',
-  'lever leg extension':'MACHINE_LEG_EXTENSION',
-  'lever bicep curl':'MACHINE_BICEP_CURL',
-  'lever pullover':'MACHINE_PULLOVER',
-  'weighted decline crunch':'WEIGHTED_DECLINE_CRUNCH',
-});
-
-// Normalize only spelling, punctuation and a few singular/plural forms known to
-// be equivalent. Do not remove equipment, grips, body positions or load words.
-const normalizeName = value => String(value || '')
-  .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
-  .toLowerCase().replace(/&/g, ' and ')
-  .replace(/[^a-z0-9]+/g, ' ').trim()
-  .replace(/\bbiceps\b/g, 'bicep').replace(/\btriceps\b/g, 'tricep')
-  .replace(/\bflye\b/g, 'fly').replace(/\brows\b/g, 'row')
-  .replace(/\braises\b/g, 'raise');
-
-const STRAVA_BY_NAME = new Map();
-const SUPPORTED = new Set(STRAVA_EXERCISE_TYPES);
-for (const type of STRAVA_EXERCISE_TYPES) {
-  const key = normalizeName(type);
-  // Explicitly refuse ambiguous normalized names rather than picking a winner.
-  if (STRAVA_BY_NAME.has(key)) STRAVA_BY_NAME.set(key, null);
-  else STRAVA_BY_NAME.set(key, type);
-}
-// A plain "plank" or "sit up" can use Strava's documented generic type.
-// A specific version always takes precedence.
-for (const type of STRAVA_EXERCISE_TYPES) {
-  if (!type.endsWith('_GENERIC')) continue;
-  const key = normalizeName(type.slice(0, -8));
-  if (!STRAVA_BY_NAME.has(key)) STRAVA_BY_NAME.set(key, type);
-}
-for (const [key, type] of [...Object.entries(MAPPING), ...Object.entries(ALIASES)]) {
-  if (!SUPPORTED.has(type)) throw new Error('Unsupported Strava exercise alias: ' + key + ' -> ' + type);
-}
-
-function candidateNames(name) {
-  const base = normalizeName(name)
-    .replace(/\s+(male|female)$/,'')
-    .replace(/\s+v\s+\d+$/,'');
-  const names = new Set([base]);
-  for (const n of [...names]) {
-    if (n.startsWith('lever ')) names.add(n.replace(/^lever /, 'machine '));
-    if (n.startsWith('smith ')) names.add(n.replace(/^smith /, 'smith machine '));
-    if (n.startsWith('ez barbell ')) names.add(n.replace(/^ez barbell /, 'ez bar '));
-    if (n.includes(' one arm ')) names.add(n.replace(' one arm ', ' single arm '));
-    if (n.includes(' one leg ')) names.add(n.replace(' one leg ', ' single leg '));
-    if (n.startsWith('cable standing ')) names.add(n.replace(/^cable standing /,'cable '));
-    if (n.startsWith('cable kneeling ')) names.add(n.replace(/^cable kneeling /,'cable '));
-    if (n.endsWith(' on bench')) names.add(n.replace(/ on bench$/, ''));
-  }
-  return names;
-}
-// openGym sometimes stores left + right repetitions as one aggregate set.
-// Split only documented unilateral exercise IDs; never divide arbitrary reps.
 const AGGREGATE_SIDES = new Set(['1204', '4948', '11251']);
 const valid = n => typeof n === 'number' && Number.isFinite(n) && n >= 0;
 const rounded = n => Math.round(n * 1000) / 1000;
-export function stravaExerciseType(ex) {
-  if (!ex) return null;
-  // Every upstream exercise_type is accepted for exact custom names, while
-  // names not in Strava's published taxonomy remain intentionally unmapped.
-  if (MAPPING[String(ex.id)]) return MAPPING[String(ex.id)];
-  const candidates = new Set();
-  for (const key of candidateNames(ex.name)) {
-    if (ALIASES[key]) candidates.add(ALIASES[key]);
-    else if (STRAVA_BY_NAME.get(key)) candidates.add(STRAVA_BY_NAME.get(key));
-  }
-  return candidates.size === 1 ? [...candidates][0] : null;
-}
 export function strengthSets(workout) {
   const sets = [], unmapped = [], factor = workout.unit === 'lb' ? 0.45359237 : 1;
   for (const ex of workout.exercises || []) {
