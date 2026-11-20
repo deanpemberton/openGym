@@ -89,7 +89,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sha256sum bin/opengym-fr965.prg > bin/opengym-fr965.prg.sha256
+          (cd bin && sha256sum opengym-fr965.prg > opengym-fr965.prg.sha256)
           {
             echo "OpenGym Forerunner 965 sideload build"
             echo "Source commit: $GITHUB_SHA"
