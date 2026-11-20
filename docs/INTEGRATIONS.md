@@ -247,6 +247,18 @@ then recreate/restart the API container. You must also enable **Strength
 workouts too** on the existing Strava integration card for the athlete. No
 extra OAuth grant is needed: it uses the existing `activity:write` scope.
 
+Structured uploads use an **opaque HMAC-based** Strava external ID instead of
+revealing the original openGym workout or watch identifier. The HMAC uses a
+separate key derived from the existing server secret. Keep that secret stable
+across reinstalls and restores to retain consistent external IDs.
+
+The delivery queue persists an upload-attempt marker **before** the initial
+POST, then saves Strava's accepted upload ID before polling. If a process dies
+after sending the request but before recording the returned ID, a retry is
+held for manual reconciliation rather than risking a duplicate. An explicit
+401 or 429 rejection can be safely retried. Review Strava activities before
+resetting a failed uncertain upload.
+
 Structured uploads use Strava's documented exercise identifiers. They reuse
 openGym's existing outbox, retry handling and OAuth tokens. The mapping
 resolves built-in catalogue IDs to precise types where possible, otherwise
