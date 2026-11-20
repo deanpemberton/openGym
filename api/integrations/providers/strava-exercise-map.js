@@ -156,12 +156,15 @@ export function normalizedExerciseName(input) {
   return String(input || '')
     .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/\b(?:v(?:ersion)?\.?\s*\d+)\b/g, '')
+    .replace(/\((?:male|female|form check|version\s*\d+)\)/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    // Apply word rules AFTER replacing snake-case separators: underscores
+    // are word characters in regex and otherwise hide plural/flye forms.
     .replace(/\bbiceps\b/g, 'bicep').replace(/\btriceps\b/g, 'tricep')
     .replace(/\bflye\b/g, 'fly').replace(/\brows\b/g, 'row')
     .replace(/\braises\b/g, 'raise')
-    .replace(/\b(?:v(?:ersion)?\.?\s*\d+)\b/g, '')
-    .replace(/\((?:male|female|form check|version\s*\d+)\)/g, '')
-    .replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+    .replace(/\s+/g, ' ').trim();
 }
 
 // Keep this index exact: no stemming or token-order guesses for custom entries.
