@@ -183,6 +183,8 @@ module Actions {
             holdStop();
         }
         var sm = discard ? null : Core.summary(s, w, false);
+        // The last HR batch must precede Finish so the server sees the full trace.
+        if (!discard) { Workout.flushTrace(); }
         Link.send(Core.finish(s, discard));
         Workout.end(!discard);
         var hr = Workout.hrTotals();
