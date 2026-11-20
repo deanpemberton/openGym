@@ -8,6 +8,8 @@ export const STRUCTURED_UPLOAD_URL = 'https://www.strava.com/api/v3/uploads';
 // Explicit, documented Strava exercise types only. Unknown exercises remain in
 // the existing human-readable activity description rather than being mislabeled.
 const MAPPING = Object.freeze({
+  '0025':'BARBELL_BENCH_PRESS','0294':'STANDING_DUMBBELL_BICEPS_CURL',
+  '0043':'BARBELL_SQUAT',
   '0289':'DUMBBELL_BENCH_PRESS','0405':'SEATED_DUMBBELL_SHOULDER_PRESS',
   '9698':'CHEST_SUPPORTED_ROW','1204':'SINGLE_ARM_LAT_PULLDOWN',
   '4948':'SINGLE_ARM_LAT_PULLDOWN','0577':'MACHINE_CHEST_PRESS',
@@ -16,6 +18,9 @@ const MAPPING = Object.freeze({
   '5516':'MACHINE_HACK_SQUAT','2130':'WEIGHTED_DECLINE_CRUNCH',
 });
 const ALIASES = Object.freeze({
+  'barbell bench press':'BARBELL_BENCH_PRESS',
+  'dumbbell biceps curl':'STANDING_DUMBBELL_BICEPS_CURL',
+  'barbell full squat':'BARBELL_SQUAT',
   'dumbbell bench press':'DUMBBELL_BENCH_PRESS',
   'dumbbell seated shoulder press':'SEATED_DUMBBELL_SHOULDER_PRESS',
   'dumbbell chest supported row':'CHEST_SUPPORTED_ROW',
