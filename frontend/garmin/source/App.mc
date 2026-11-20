@@ -418,7 +418,7 @@ module Workout {
             try {
                 var name = e == null ? "" : Core.strOf(e["name"]);
                 if (name.length() == 0 && e != null) { name = Core.strOf(e["id"]); }
-                if (name.length() > 28) { name = name.substring(0, 28); }
+                if (name.length() > 17) { name = name.substring(0, 17); }
                 var details = name + " #" + (si + 1).toString();
                 if (side != null) { details += " " + Core.strOf(side); }
                 if (sec != null && sec > 0) {
@@ -427,7 +427,7 @@ module Workout {
                     if (w != null) { details += " " + Core.strOf(w) + Core.unitOf(G.state, e); }
                     if (r != null) { details += " x" + Core.strOf(r); }
                 }
-                if (details.length() > 62) { details = details.substring(0, 62); }
+                if (details.length() > 30) { details = details.substring(0, 30); }
                 lapDetailField.setData(details);
             } catch (ex) {
                 // A full/unsupported developer field must never stop a strength workout.
@@ -465,7 +465,7 @@ module Workout {
             try {
                 lapDetailField = session.createField("exercise_set", 0,
                     FitContributor.DATA_TYPE_STRING,
-                    { :mesgType => FitContributor.MESG_TYPE_LAP, :count => 64 });
+                    { :mesgType => FitContributor.MESG_TYPE_LAP, :count => 32 });
             } catch (ex) {
                 // On unsupported devices the native laps still work without text metadata.
             }

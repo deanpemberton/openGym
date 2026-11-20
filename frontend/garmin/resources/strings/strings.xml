@@ -68,4 +68,6 @@
     <string id="weight">Weight</string>
     <string id="workout">Workout</string>
     <string id="workout_saved">Workout saved</string>
+    <string id="exercise_set_detail">Exercise and set</string>
+    <string id="record_set_laps">Record set laps</string>
 </strings>

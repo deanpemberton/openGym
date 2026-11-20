@@ -497,3 +497,7 @@ Hindi, Bengali or Persian, and one Portuguese (pt).
 wants each upload's version higher than the last, which the release number already is.
 `node frontend/garmin/check.mjs` fails when it is not `frontend/package.json`'s, so the release
 bump has to touch it.
+
+### Set-lap menu and details
+
+From the watch's workout menu, select **Record set laps** to toggle Garmin native laps (default off). Turning these on may restore audible "Lap N" announcements if Garmin's global lap alert is enabled; the menu cannot override that system prompt. The FIT developer lap field records a brief exercise/set label where supported. Sideloaded builds can write this field, but Garmin Connect generally requires store metadata to display custom columns. Regardless of this toggle, OpenGym's exercise/set log and the timestamped HR trace go to the phone and OpenGym server independently.
