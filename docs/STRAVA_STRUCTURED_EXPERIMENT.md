@@ -56,6 +56,33 @@ remain unmapped. Tests mock Strava and never upload a real activity.
 **Self-hosted deployment note:** The structured upload feature imports its supporting exercise taxonomy and mapper modules. Build the complete updated API tree rather than copying only the modified Strava provider file into an older API image.
 
 
+## Privacy and crash-safe Strava delivery
+
+An opaque, HMAC-derived external activity ID replaces plaintext source workout
+and device identifiers. The key is derived from the existing openGym server
+secret using domain separation; it is not stored as a new application secret.
+The activity name and description still intentionally contain the user's
+exercise details according to their existing **Strength workouts too** setting.
+
+The persistent outbox atomically checkpoints an intent marker **before** the
+first upload POST. If a crash, timeout or unknown server response occurs
+without an accepted upload ID, the job fails closed rather than double-posting.
+Once Strava returns an upload ID, that ID is atomically checkpointed before
+status polling and remains available across restarts. Explicit pre-acceptance
+401/429 responses clear the intent marker so token refresh/backoff may retry.
+
+There is an unavoidable ambiguity if Strava accepts an upload while the
+response is lost: the integration cannot look up an upload by external ID
+through the existing OAuth permission. Such cases require manual inspection
+rather than automatic resubmission. Test coverage includes pre-POST intent
+persistence, accepted-ID persistence before polling, a lost-response scenario,
+and conservative retry behaviour. This design favours avoiding duplicate
+activities over at-least-once posting when a remote outcome is unknowable.
+
+The exercise-catalogue CSV audit prefixes spreadsheet-formula-leading
+values with a literal apostrophe; plain quoting is not sufficient protection
+when a CSV is opened in spreadsheet software.
+
 ## Catalogue-wide Strava exercise mapping
 
 The openGym catalogue contains 5,632 built-in exercises, including strength, cardio, mobility, stretching and yoga. Strava exposes a smaller fixed JSON strength exercise vocabulary. Not every openGym movement has a one-to-one Strava counterpart.
