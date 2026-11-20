@@ -94,7 +94,7 @@ test('429/5xx retry, 400/401 refusal, and polling errors are explicit',async()=>
     const res=await deliverStructuredStrength({key:'x'},'token',workout,act,{fetchFn:async()=>reply(status,{})});
     assert.equal(res.ok,false);
     assert.equal(res.status,status);
-    assert.equal(res.retry,status===429||status>=500);
+    assert.equal(res.retry,status===429); // a 5xx after upload POST is ambiguous
   }
   const job={key:'poll-failed',stravaUploadId:'77'};
   const res=await deliverStructuredStrength(job,'token',workout,act,{fetchFn:async()=>reply(429,{})});
