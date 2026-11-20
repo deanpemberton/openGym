@@ -403,6 +403,14 @@ module Workout {
         }
     }
 
+    //! One native Garmin lap per completed strength set, retained for Intervals.icu.
+    //! Speech is controlled globally by Garmin firmware, not via this watch-app API.
+    function lap() {
+        if (session != null && session.isRecording()) {
+            session.addLap();
+        }
+    }
+
     //! The recording stopped: saved (finished) or thrown away (discarded).
     function end(keep) {
         if (session != null) {
