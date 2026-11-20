@@ -59,6 +59,7 @@ test('FIT contains exact timestamped Garmin HR samples as records', () => {
 
 test('Strava server uploads FIT, polls once by upload ID, posts no duplicate activity', async () => {
   let posted = 0, polled = 0, bytes;
+  let clock = Date.now();
   const fetchFn = async (url, options) => {
     if (url === TOKEN_URL) return response(200, {
       access_token: 'access', refresh_token: 'refresh', expires_at: Math.floor(Date.now() / 1000) + 3600,
@@ -81,7 +82,7 @@ test('Strava server uploads FIT, polls once by upload ID, posts no duplicate act
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'strava-fit-'));
   try {
     const h = createIntegrations({ dataDir: dir, secret: 's'.repeat(64),
-      env: { INTEGRATIONS: 'strava', STRAVA_CLIENT_ID: '100', STRAVA_CLIENT_SECRET: 'secret' }, fetchFn });
+      env: { INTEGRATIONS: 'strava', STRAVA_CLIENT_ID: '100', STRAVA_CLIENT_SECRET: 'secret' }, fetchFn, now: () => clock });
     const uri = h.oauthStart('user', 'strava', 'https://gym.example.org/callback');
     await h.oauthFinish({ state: new URL(uri).searchParams.get('state'), code: 'ok', scope: 'activity:write' }, 'user');
     const conn = h.describe('user').connections[0];
@@ -92,11 +93,11 @@ test('Strava server uploads FIT, polls once by upload ID, posts no duplicate act
     assert.deepEqual(decodeRecords(bytes).map(x => x[3]), [100,112,125,141]);
     // Deferred processing is persisted with the job, so it cannot post twice.
     assert.equal(h._outbox().counts('user', conn.id).queued, 1);
-    const j = h._outbox(); // use the clock-independent retry machinery through persisted job state
-    h.stop();
-    // Polling will run once the deferred job becomes due in the ordinary server interval.
-    await new Promise(resolve => { const tm = setTimeout(resolve, 30); tm.unref?.(); });
+    clock += 20001;
+    await h._outbox().run();
     assert.equal(posted, 1);
-    assert.equal(polled, 0);
+    assert.equal(polled, 1);
+    assert.equal(h._outbox().counts('user', conn.id).queued, 0);
+    h.stop();
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
