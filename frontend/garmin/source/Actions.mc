@@ -64,7 +64,7 @@ module Actions {
         G.endedAt = System.getTimer();
     }
 
-    //! A set done: logged with its heart rate, a short buzz, then the
+    //! A set done: logged with its heart rate, a Garmin lap, a short buzz, then the
     //! rest (the exercise's, else the workout's, else the phone's default) or the next set. After
     //! the last set the Overview comes up by itself (its Finish is next).
     function tick(pos, si, side, w, r, sec, restSec) {
@@ -95,8 +95,9 @@ module Actions {
         // The rest runs from the tick's own time, and the tick tells the phone where it ends.
         Rest.begin(Core.tickRest(s, ev, rs), rs);
         Link.send(ev);
-        // Do not create Garmin laps per set: the watch announces "Lap 1", "Lap 2", etc.
-        // OpenGym already carries each set (with its time and HR) in the phone sync.
+        // Preserve the useful Garmin/Intervals lap timeline for completed sets.
+        // Garmin's spoken lap prompts are system-controlled; see Garmin Audio Prompts.
+        Workout.lap();
         Rest.buzz([[40, 60]]);
         if (atEnd && !Core.hasMore(s)) {
             G.page = Ui.roomy() ? :over : :set;
