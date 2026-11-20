@@ -29,3 +29,32 @@ npm test
 GitHub PR CI runs the standard `.github/workflows/test.yml` API suite on Node 26.
 
 **Safety:** This is experimental; do not enable on the production instance until a controlled private test workout has been inspected for duplicate prevention, exercise mapping, units and time zone.
+## Strava's complete documented exercise vocabulary (20 November 2026)
+
+The integration now includes 572 distinct documented Strava `exercise_type` values
+across 31 groups in `api/integrations/providers/strava-exercises.js`, drawn from
+https://developers.strava.com/docs/uploads/ (including the latest published additions).
+It accepts exact identifier names and case/punctuation-normalized readable equivalents.
+A plain generic name like `plank` can map to `PLANK_GENERIC`; specific exercises take
+precedence. OpenGym-specific equipment words (e.g. `lever` → `machine`) and a reviewed
+alias table cover common nomenclature differences. Existing exercise ID overrides remain.
+Unknown or ambiguous movements are intentionally left out of native sets and retained
+in the activity's human-readable description, rather than mislabeled.
+
+**Coverage is not the same as the number of exercises in openGym.** The openGym
+catalogue contains 5,632 exercise entries, many of which have no equivalent in
+Strava's 572 supported movement IDs. Built-in titles that match exactly or
+through safe variants are auto-mapped, including variations labelled `v. 2`.
+A custom exercise matching one of the supported Strava names can also map without
+requiring a hard-coded openGym exercise ID.
+
+The comprehensive API tests assert that all 572 identifiers resolve and are
+unique, read all 5,632 openGym catalogue entries, confirm the expected training
+routine mappings, and verify that unsupported names and equipment substitutions
+remain unmapped. Tests mock Strava and never upload a real activity.
+
+**Self-hosted deployment note:** This change adds a third required provider
+module, `strava-exercises.js`. The Flatnet API-only overlay image must copy
+all three files together. Importing the new mapper into the old two-file
+overlay will fail API startup. Leave the prior known-good API image available
+for rollback.
