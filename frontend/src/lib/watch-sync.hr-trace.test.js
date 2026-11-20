@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { appendWatchHrTrace } from './watch-sync.js'
 
-const t0 = Date.parse('2026-11-20T08:00:00Z')
+const t0 = Date.now() - 10 * 60_000
 
 test('watch HR samples merge in timestamp order, deduplicate replay, and reject bad readings', () => {
   const w = { id: 'gym-1', start: t0, end: t0 + 600000, entries: [] }
