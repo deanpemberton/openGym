@@ -200,7 +200,7 @@ as both of them expect.
 Finished workouts go up to Strava as activities, from your server, whichever device you logged
 them on: cardio as what it was (a treadmill or outdoor run, a ride, a row, the elliptical, the
 stairs), with its time and distance, and, if you switch on **Strength workouts too**, strength
-sessions as *Weight Training* with every exercise and set in the description. Upload only:
+sessions as *Weight Training* with every exercise and set in the description. Optionally, a self-hoster can enable native structured strength sets and a muscle map using Strava's JSON upload format. Upload only:
 nothing is read back from Strava. Idea by @workhardbekind (#478).
 
 - Settings → Integrations → Strava → **Connect** (in a browser signed in to your server: the
@@ -229,6 +229,36 @@ Strava hands out one API application per Strava account, so every server needs i
    STRAVA_CLIENT_SECRET=…
    ```
 3. Restart the api container. The card shows for everyone on the server.
+
+### Optional structured strength workouts
+
+By default, openGym continues using Strava manual activities with each exercise
+and set described in text. To also upload native **exercise names, repetitions,
+weights and muscle maps** for strength sessions, add this to the API container
+environment (alongside the usual Strava OAuth settings):
+
+```env
+STRAVA_STRUCTURED_STRENGTH=1
+TZ=Pacific/Auckland
+```
+
+Set `TZ` to your server's actual IANA timezone, not necessarily Pacific/Auckland,
+then recreate/restart the API container. You must also enable **Strength
+workouts too** on the existing Strava integration card for the athlete. No
+extra OAuth grant is needed: it uses the existing `activity:write` scope.
+
+Structured uploads use Strava's documented exercise identifiers. They reuse
+openGym's existing outbox, retry handling and OAuth tokens. The mapping
+resolves built-in catalogue IDs to precise types where possible, otherwise
+to a supported movement family. Unsupported movements still appear in the
+activity description; when an entire workout lacks supported native exercises,
+openGym falls back to the usual text-description activity.
+
+View the individual exercises and Strava-generated muscle map in the Strava
+**mobile app**. The desktop website may show only the text description.
+This feature does **not** upload openGym's image/share card as a Strava
+photo. For mapping rules and the full catalogue audit, see
+[STRAVA_STRUCTURED_EXPERIMENT.md](STRAVA_STRUCTURED_EXPERIMENT.md).
 
 A new Strava app is limited to one athlete (its owner) until Strava reviews it ("Athlete capacity"
 on the app page). For a family server, ask Strava to raise it. openGym asks for the
