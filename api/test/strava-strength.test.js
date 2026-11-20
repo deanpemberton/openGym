@@ -53,6 +53,8 @@ test('invalid timestamps, duration, and unmapped-only exercise lists fail closed
 });
 test('documented Strava identifiers for Friday and Monday routines', () => {
   const expected = {
+    '0025':'BARBELL_BENCH_PRESS','0294':'STANDING_DUMBBELL_BICEPS_CURL',
+    '0043':'BARBELL_SQUAT',
     '0289':'DUMBBELL_BENCH_PRESS','0405':'SEATED_DUMBBELL_SHOULDER_PRESS',
     '9698':'CHEST_SUPPORTED_ROW','1204':'SINGLE_ARM_LAT_PULLDOWN',
     '4948':'SINGLE_ARM_LAT_PULLDOWN','0577':'MACHINE_CHEST_PRESS',
@@ -100,4 +102,18 @@ test('429/5xx retry, 400/401 refusal, and polling errors are explicit',async()=>
   const res=await deliverStructuredStrength(job,'token',workout,act,{fetchFn:async()=>reply(429,{})});
   assert.equal(res.retry,true);
   assert.equal(job.stravaUploadId,'77');
+});
+
+test('existing Strava Integration Test routine maps all five programmed working sets', () => {
+  const { sets, unmapped } = strengthSets({unit:'kg',exercises:[
+    {id:'0025',name:'barbell bench press',sets:[{reps:10,weight:40},{reps:10,weight:40}]},
+    {id:'0294',name:'dumbbell biceps curl',sets:[{reps:12,weight:10},{reps:12,weight:10}]},
+    {id:'0043',name:'barbell full squat',sets:[{reps:8,weight:60}]},
+  ]});
+  assert.deepEqual(unmapped,[]);
+  assert.deepEqual(sets.map(s=>s.exercise_type),[
+    'BARBELL_BENCH_PRESS','BARBELL_BENCH_PRESS',
+    'STANDING_DUMBBELL_BICEPS_CURL','STANDING_DUMBBELL_BICEPS_CURL','BARBELL_SQUAT'
+  ]);
+  assert.deepEqual(sets.map(s=>s.weight),[40,40,10,10,60]);
 });
