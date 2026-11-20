@@ -108,8 +108,13 @@ export async function deliverStructuredStrength(job, token, workout, activity, {
       const r = await response(await fetchFn(STRUCTURED_UPLOAD_URL, {
         method:'POST', headers:{ Authorization:'Bearer ' + token }, body:form, signal:controller.signal,
       }));
-      if (r.status === 429 || r.status >= 500)
-        return { ok:false, retry:true, code:'http', status:r.status };
+      // A server error after POST has an uncertain outcome: the upload may
+      // already exist. Fail closed, like a dropped connection, to prevent
+      // the outbox from POSTing a duplicate activity on automatic retry.
+      if (r.status >= 500) return { ok:false, retry:false, code:'unknown-upload', status:r.status,
+        msg:'Strava may have accepted this upload. Inspect Strava before manually retrying.' };
+      if (r.status === 429) return { ok:false, retry:true, code:'rate', status:r.status,
+        retryAfterMs:15 * 60_000 };
       if (r.status !== 200 && r.status !== 201)
         return { ok:false, retry:false, code:'http', status:r.status, msg:'Strava upload rejected (' + r.status + ')' };
       const id = r.data?.id_str ?? r.data?.id;
