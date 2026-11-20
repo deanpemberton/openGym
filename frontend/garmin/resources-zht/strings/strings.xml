@@ -68,4 +68,6 @@
     <string id="weight">重量</string>
     <string id="workout">訓練</string>
     <string id="workout_saved">訓練已儲存</string>
+    <string id="exercise_set_detail">Exercise and set</string>
+    <string id="record_set_laps">記錄每組圈數</string>
 </strings>

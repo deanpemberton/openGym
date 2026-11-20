@@ -1,0 +1,7 @@
+<resources>
+    <fitContributions>
+        <fitField id="0" displayInChart="false" displayInActivityLaps="true"
+                  sortOrder="0" dataLabel="@Strings.exercise_set_detail"
+                  unitLabel="@Strings.exercise_set_detail"/>
+    </fitContributions>
+</resources>

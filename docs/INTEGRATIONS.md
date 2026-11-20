@@ -200,7 +200,13 @@ as both of them expect.
 Finished workouts go up to Strava as activities, from your server, whichever device you logged
 them on: cardio as what it was (a treadmill or outdoor run, a ride, a row, the elliptical, the
 stairs), with its time and distance, and, if you switch on **Strength workouts too**, strength
-sessions as *Weight Training* with every exercise and set in the description. Upload only:
+sessions as *Weight Training* with every exercise and set in the description. When a synced
+Garmin workout contains timestamped wrist HR readings, the server uploads a FIT file with the
+real HR record stream and structured strength sets instead of a manual activity. Strava can
+then show the HR graph. If no real HR trace is present, the existing manual upload remains.
+The FIT upload is asynchronous: openGym keeps the Strava upload id and polls until it completes;
+watch-derived workouts have a brief grace period for the final HR batch. The trace is provided
+only to Strava, not to generic webhooks. Upload only:
 nothing is read back from Strava. Idea by @workhardbekind (#478).
 
 - Settings → Integrations → Strava → **Connect** (in a browser signed in to your server: the

@@ -68,4 +68,6 @@
     <string id="weight">Ağırlık</string>
     <string id="workout">Antrenman</string>
     <string id="workout_saved">Antrenman kaydedildi</string>
+    <string id="exercise_set_detail">Exercise and set</string>
+    <string id="record_set_laps">Set turları</string>
 </strings>

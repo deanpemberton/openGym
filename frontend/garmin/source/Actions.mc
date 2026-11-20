@@ -64,7 +64,7 @@ module Actions {
         G.endedAt = System.getTimer();
     }
 
-    //! A set done: logged with its heart rate, a short buzz, then the
+    //! A set done: logged with heart rate, an optional lap, a short buzz, then the
     //! rest (the exercise's, else the workout's, else the phone's default) or the next set. After
     //! the last set the Overview comes up by itself (its Finish is next).
     function tick(pos, si, side, w, r, sec, restSec) {
@@ -94,9 +94,11 @@ module Actions {
         }
         // The rest runs from the tick's own time, and the tick tells the phone where it ends.
         Rest.begin(Core.tickRest(s, ev, rs), rs);
+        // Send the partial HR batch before its set, so even a short workout has samples.
+        Workout.flushTrace();
         Link.send(ev);
-        // Do not create Garmin laps per set: the watch announces "Lap 1", "Lap 2", etc.
-        // OpenGym already carries each set (with its time and HR) in the phone sync.
+        // Optional native Garmin lap. The OpenGym set event is independent of this choice.
+        Workout.lap(e, si, side, w, r, sec);
         Rest.buzz([[40, 60]]);
         if (atEnd && !Core.hasMore(s)) {
             G.page = Ui.roomy() ? :over : :set;
@@ -183,6 +185,8 @@ module Actions {
             holdStop();
         }
         var sm = discard ? null : Core.summary(s, w, false);
+        // The last HR batch must precede Finish so the server sees the full trace.
+        if (!discard) { Workout.flushTrace(); }
         Link.send(Core.finish(s, discard));
         Workout.end(!discard);
         var hr = Workout.hrTotals();
@@ -495,6 +499,8 @@ module Menus {
             item(menu, Rez.Strings.skip_set, :skip);
             item(menu, Rez.Strings.next_exercise, :next);
         }
+        menu.addItem(new WatchUi.MenuItem(Ui.t(Rez.Strings.record_set_laps),
+            Workout.lapsOn() ? "On" : "Off", :setLaps, null));
         item(menu, Rez.Strings.finish_and_save, :finish);
         item(menu, Rez.Strings.discard_workout, :discard);
         item(menu, Rez.Strings.continue_workout, :back);
@@ -586,6 +592,8 @@ class WorkoutMenuDelegate extends WatchUi.Menu2InputDelegate {
             Ed.save();
         } else if (id == :cancel) {
             G.fix = null;
+        } else if (id == :setLaps) {
+            Workout.toggleLaps();
         } else if (id == :effort) {
             Menus.effort();
         }

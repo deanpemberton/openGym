@@ -68,4 +68,6 @@
     <string id="weight">Peso</string>
     <string id="workout">Treino</string>
     <string id="workout_saved">Treino guardado</string>
+    <string id="exercise_set_detail">Exercise and set</string>
+    <string id="record_set_laps">Voltas por série</string>
 </strings>

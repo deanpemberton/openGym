@@ -1,3 +1,4 @@
+import { stravaStrengthFit, validHrTrace } from '../strength-fit.js';
 /* Strava (#478, idea by @workhardbekind): finished workouts go up to Strava as activities, cardio
  * as what it was (a run, a ride, a row) and, when the person switches it on, strength sessions as
  * Weight Training. Upload only: nothing is read back from Strava.
@@ -21,6 +22,7 @@
 export const AUTHORIZE_URL = 'https://www.strava.com/oauth/authorize';
 export const TOKEN_URL = 'https://www.strava.com/oauth/token';
 export const ACTIVITY_URL = 'https://www.strava.com/api/v3/activities';
+export const UPLOAD_URL = 'https://www.strava.com/api/v3/uploads';
 export const SCOPE = 'activity:write';
 const TIMEOUT_MS = 15_000;
 // Strava's own limits are 100 requests per 15 minutes and 1000 a day per application; the
@@ -126,6 +128,34 @@ async function authed(fetchFn, url, token, body) {
   } finally { clearTimeout(tm); }
 }
 
+// FIT uploads are asynchronous. Keep the returned upload id on the persisted outbox job and
+// poll that id on retries; never POST the same FIT repeatedly while Strava is processing it.
+async function fitRequest(fetchFn, url, token, { workout = null, activity = null } = {}) {
+  const ctrl = new AbortController();
+  const tm = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  tm.unref?.();
+  const t0 = Date.now();
+  try {
+    const headers = { Authorization: 'Bearer ' + token, Accept: 'application/json' };
+    let body, method = 'GET';
+    if (workout) {
+      const fit = stravaStrengthFit(workout);
+      body = new FormData();
+      body.append('file', new Blob([fit], { type: 'application/octet-stream' }), 'opengym-strength.fit');
+      body.append('data_type', 'fit');
+      body.append('sport_type', 'WeightTraining');
+      body.append('external_id', 'opengym-' + String(workout.id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80));
+      if (activity?.name) body.append('name', activity.name);
+      if (activity?.description) body.append('description', activity.description);
+      method = 'POST';
+    }
+    const response = await fetchFn(url, { method, headers, ...(body ? { body } : {}), signal: ctrl.signal });
+    let data = null;
+    try { data = await response.json(); } catch { /* no JSON */ }
+    return { status: response.status, data, ms: Date.now() - t0 };
+  } finally { clearTimeout(tm); }
+}
+
 export function stravaProvider({ env = process.env, fetchFn = globalThis.fetch, now = Date.now } = {}) {
   const clientId = String(env.STRAVA_CLIENT_ID || '').trim();
   const clientSecret = String(env.STRAVA_CLIENT_SECRET || '').trim();
@@ -220,16 +250,32 @@ export function stravaProvider({ env = process.env, fetchFn = globalThis.fetch, 
         if (r.error) return r.error;
         token = r.access;
       }
+      // Full Garmin HR traces use FIT so Strava can graph every measured sample.
+      // Workouts without a trace preserve the existing manual activity behavior.
+      const withFit = act.sport_type === 'WeightTraining' && validHrTrace(w).length >= 2;
+      const send = access => withFit
+        ? fitRequest(fetchFn, job.uploadId ? UPLOAD_URL + '/' + encodeURIComponent(job.uploadId) : UPLOAD_URL, access,
+            job.uploadId ? {} : { workout: w, activity: act })
+        : authed(fetchFn, ACTIVITY_URL, access, act);
       let res;
-      try { res = await authed(fetchFn, ACTIVITY_URL, token, act); }
+      try { res = await send(token); }
       catch { return { ok: false, retry: true, code: 'network', msg: 'Could not reach Strava.' }; }
       if (res.status === 401) {
         const r = await refresh(reveal, reseal);
         if (r.error) return r.error;
-        try { res = await authed(fetchFn, ACTIVITY_URL, r.access, act); }
+        try { res = await send(r.access); }
         catch { return { ok: false, retry: true, code: 'network', msg: 'Could not reach Strava.' }; }
       }
-      if (res.status === 201 || res.status === 200) return { ok: true, status: res.status, ms: res.ms };
+      if (withFit && (res.status === 200 || res.status === 201)) {
+        if (res.data?.activity_id) return { ok: true, status: res.status, ms: res.ms };
+        if (res.data?.error) return { ok: false, retry: false, code: 'fit', msg: String(res.data.error).slice(0, 150) };
+        if (res.data?.id) {
+          job.uploadId = res.data.id;
+          return { defer: 20_000 };
+        }
+        return { ok: false, retry: true, code: 'pending', msg: 'Strava has not finished processing the FIT file.' };
+      }
+      if (!withFit && (res.status === 201 || res.status === 200)) return { ok: true, status: res.status, ms: res.ms };
       if (res.status === 429) return { ok: false, retry: true, retryAfterMs: 15 * 60_000, status: 429, code: 'rate', msg: 'Strava says slow down, trying again in 15 minutes.' };
       if (res.status >= 500) return { ok: false, retry: true, status: res.status, code: 'http', msg: `Strava answered ${res.status}.` };
       if (res.status === 403 || res.status === 401) return { ok: false, retry: false, gone: true, status: res.status, code: 'reconnect', msg: 'Reconnect Strava: it no longer lets openGym upload.' };

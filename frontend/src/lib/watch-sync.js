@@ -47,7 +47,7 @@ import { weightIncrement } from './progression.js'
 import { sessionHistory } from './backfill.js'
 import { buildCombinedEntries, deriveSessionName } from './session-merge.js'
 import { todayISO, exerciseNameText } from './format.js'
-import { sanitizeHr } from './heart-rate.js'
+import { sanitizeHr, cleanSamples } from './heart-rate.js'
 import { readWatchPrefs, settingsForWatch, writeWatchStatus, readWatchStatus, onWatchPrefs, writeGarminLink, noteWatchHeard } from './watch-settings.js'
 import { forgottenForWatch, readForgottenPrefs, readForgottenState, onForgottenChange, gymReminderOn } from './forgotten-workout.js'
 import { garminSnapshot, GARMIN_ACKED_MAX } from './garmin-snapshot.js'
@@ -583,6 +583,31 @@ const noteSeen = (seen, wid) => {
 export function ackedIds (max = ACKED_MAX) { return readApplied().slice(-max) }
 
 /**
+ * Fold timestamped samples from the Garmin watch into the same workout the phone syncs.
+ * Deduplicate retransmitted Connect IQ batches by sample timestamp (not message arrival).
+ * Keep at most six hours at the watch's nominal 10-second cadence.
+ */
+export function appendWatchHrTrace (s, wid, samples, stamp = null) {
+  if (!wid || !s || !Array.isArray(samples)) return false
+  const saved = (s.workouts || []).find(w => w?.id === wid)
+  const workout = s.active?.id === wid ? s.active : saved
+  if (!workout) return false
+  const start = Number(workout.start)
+  const end = Number(workout.end)
+  if (!Number.isFinite(start) || start <= 0) return false
+  const incoming = cleanSamples(samples).filter(([t]) => t >= start - 30000 && t <= (end > start ? end + 30000 : Date.now() + 30000))
+  if (!incoming.length) return false
+  const prev = Array.isArray(workout.hrTrace) ? workout.hrTrace : []
+  const byTime = new Map(cleanSamples(prev).map(([t, bpm]) => [t, bpm]))
+  for (const [t, bpm] of incoming) byTime.set(t, bpm)
+  const next = [...byTime].sort((a, b) => a[0] - b[0]).slice(-2160)
+  if (JSON.stringify(next) === JSON.stringify(prev)) return false
+  workout.hrTrace = next
+  if (workout === saved && stamp) stamp(workout)
+  return true
+}
+
+/**
  * The events in the order the watch made them: those that carry the watch's `seq` are sorted by it
  * among themselves (they can arrive out of order: a fast message overtaking a queued transfer), the
  * others keep their places.
@@ -707,7 +732,7 @@ function claim (ev) {
  */
 // The events about one workout: they wait for a watch-started workout's start, and they tell that
 // the watch runs that workout.
-const WORKOUT_EVENTS = ['setDone', 'setHr', 'finish', 'discard', 'rest', 'addSet', 'removeSet']
+const WORKOUT_EVENTS = ['setDone', 'setHr', 'hrTrace', 'finish', 'discard', 'rest', 'addSet', 'removeSet']
 export function applyEvents (events, getState, now) {
   if (!Array.isArray(events)) return []
   // What the watch's events change in the workout is the watch's activity, not the phone's.
@@ -825,6 +850,10 @@ function applyEach (events, getState, now = Date.now()) {
         // What the watch says about itself, for Settings → Apple Watch. Never queued behind anything.
         // An older one that arrives late (a transfer overtaken by a message) does not undo a newer one.
         if (!(num(ev.at) && num(readWatchStatus()?.at) > num(ev.at))) writeWatchStatus(ev)
+      } else if (ev.type === 'hrTrace' && (ours || saved)) {
+        // Buffered true watch HR readings, sent before Finish; timestamps survive reconnections.
+        if (!appHandlers?.patchTrace) break
+        appHandlers.patchTrace(wid, ev.samples)
       } else if (ev.type === 'setHr') {
         // The rest's heart rate comes once the rest is over, maybe after the workout was saved:
         // a field on that set, wherever the set is now. Nothing for a reading that does not hold up.

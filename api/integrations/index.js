@@ -260,6 +260,17 @@ export function createIntegrations({ dataDir, secret, env = process.env, now = D
       if (next?.modules?.integrations === false) return 0;
       const conns = store.list(uid).filter(r => providers[r.provider] && !r.paused);
       if (!conns.length) return 0;
+      // When the workout was finished on the phone, its final Garmin HR batch can arrive
+      // seconds later. Refresh the queued upload before it has been sent to Strava.
+      const oldWorkouts = new Map((Array.isArray(prev?.workouts) ? prev.workouts : []).map(w => [String(w.id), w]));
+      for (const w of Array.isArray(next?.workouts) ? next.workouts : []) {
+        const old = oldWorkouts.get(String(w.id))
+        if (!old || JSON.stringify(old.hrTrace || []) === JSON.stringify(w.hrTrace || [])) continue
+        for (const c of conns.filter(c => c.provider === 'strava' && c.events.includes('workout.finished'))) {
+          const key = `strava:${uid}:${c.id}:workout.finished:${String(w.id).slice(0,80)}`;
+          outbox.updatePending(key, eventData({ type: 'workout.finished', data: w }, next, { provider: 'strava' }))
+        }
+      }
       const evs = detectEvents(prev, next, { now: now() });
       let n = 0;
       for (const ev of evs) {
@@ -268,7 +279,9 @@ export function createIntegrations({ dataDir, secret, env = process.env, now = D
           const eid = newId('evt');
           const r = outbox.enqueue({
             id: eid, key: `${c.provider}:${uid}:${c.id}:${ev.type}:${ev.entity}`, uid, conn: c.id, provider: c.provider, ev: ev.type,
-            payload: envelope({ id: eid, type: ev.type, data: eventData(ev, next), at: ev.at }),
+            // Give the watch time to send its final buffered HR samples when the phone finishes first.
+            delayMs: c.provider === 'strava' && ev.type === 'workout.finished' && (Array.isArray(ev.data?.hrTrace) && ev.data.hrTrace.length || (ev.data?.entries || []).some(e => (e.sets || []).some(s => s?.hr?.avg))) ? 60000 : 0,
+            payload: envelope({ id: eid, type: ev.type, data: eventData(ev, next, { provider: c.provider }), at: ev.at }),
           });
           if (r === 'queued') n++;
           else if (r === 'full') settle(uid, c.id, ev.type, { ok: false, msg: 'Too much waiting to be sent, this one was skipped.' }, false);

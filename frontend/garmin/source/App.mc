@@ -2,6 +2,7 @@
 // docs/GARMIN.md has the whole picture; Core.mc has the session logic.
 import Toybox.Activity;
 import Toybox.ActivityRecording;
+import Toybox.FitContributor;
 import Toybox.Application;
 import Toybox.Application.Storage;
 import Toybox.Attention;
@@ -139,6 +140,8 @@ class OpenGymApp extends Application.AppBase {
         if (_timer != null) {
             _timer.stop();
         }
+        // Flush the last wrist HR samples before closing; they remain in the acked outbox.
+        Workout.flushTrace();
         // The app closing mid-workout keeps what Garmin Connect recorded so far.
         Workout.end(true);
         G.save();
@@ -159,6 +162,7 @@ class OpenGymApp extends Application.AppBase {
         var r0 = G.state["rest"];
         var ended = Core.applySnapshot(G.state, data);
         if (ended != null) {
+            Workout.flushTrace();
             Workout.end(true);
             ended["hr"] = Workout.hrTotals();
             Actions.ended(ended);
@@ -361,6 +365,7 @@ class SendListener extends Communications.ConnectionListener {
 //! "Garmin Connect and the health apps").
 module Workout {
     var session = null;
+    var lapDetailField = null;
     // since the last set: sum, count, max; and over the whole workout
     var setSum = 0;
     var setN = 0;
@@ -368,6 +373,13 @@ module Workout {
     var allSum = 0;
     var allN = 0;
     var allMax = 0;
+    // The big watches keep a short HR sample window, not a second-by-second file.
+    // A batch travels through the existing idempotent/acked Connect IQ outbox.
+    var traceBuf = [];
+    var traceLast = 0l;
+    var traceWid = null;
+    const TRACE_INTERVAL_MS = 10000l;
+    const TRACE_BATCH_SIZE = 24;
 
     function recordingOn() {
         try {
@@ -378,7 +390,60 @@ module Workout {
         }
     }
 
+    // Optional native Garmin lap on each completed set. Defaults off to avoid the global
+    // spoken "Lap 1" prompts. The watch menu and Connect IQ settings use the same property.
+    function lapsOn() {
+        try {
+            var v = Application.Properties.getValue("setLaps");
+            return v == true;
+        } catch (ex) {
+            return false;
+        }
+    }
+
+    function toggleLaps() {
+        var next = !lapsOn();
+        try {
+            Application.Properties.setValue("setLaps", next);
+        } catch (ex) {
+            // Leave the existing setting in place when writes are unavailable.
+        }
+    }
+
+    //! FIT contributor stores per-lap exercise details, not a replacement for Garmin's
+    //! standard numbered "Lap N" title. Some Connect clients won't display custom text.
+    function lap(e, si, side, w, r, sec) {
+        if (!lapsOn() || session == null || !session.isRecording()) { return; }
+        if (lapDetailField != null) {
+            try {
+                var name = e == null ? "" : Core.strOf(e["name"]);
+                if (name.length() == 0 && e != null) { name = Core.strOf(e["id"]); }
+                if (name.length() > 17) { name = name.substring(0, 17); }
+                var details = name + " #" + (si + 1).toString();
+                if (side != null) { details += " " + Core.strOf(side); }
+                if (sec != null && sec > 0) {
+                    details += " " + Core.toI(sec, 0).toString() + "s";
+                } else {
+                    if (w != null) { details += " " + Core.strOf(w) + Core.unitOf(G.state, e); }
+                    if (r != null) { details += " x" + Core.strOf(r); }
+                }
+                if (details.length() > 30) { details = details.substring(0, 30); }
+                lapDetailField.setData(details);
+            } catch (ex) {
+                // A full/unsupported developer field must never stop a strength workout.
+                lapDetailField = null;
+            }
+        }
+        try { session.addLap(); } catch (ex) { /* Garmin recording continues without this lap */ }
+    }
+
     function begin() {
+        var active = Core.dictOf(G.state["w"]);
+        if (active != null) {
+            traceWid = Core.strOf(active["id"]);
+            traceBuf = [];
+            traceLast = 0l;
+        }
         if (Sensor has :setEnabledSensors) {
             Sensor.setEnabledSensors([Sensor.SENSOR_HEARTRATE]);
         }
@@ -396,6 +461,14 @@ module Workout {
                 :sport => Activity.SPORT_TRAINING,
                 :subSport => Activity.SUB_SPORT_STRENGTH_TRAINING
             });
+            lapDetailField = null;
+            try {
+                lapDetailField = session.createField("exercise_set", 0,
+                    FitContributor.DATA_TYPE_STRING,
+                    { :mesgType => FitContributor.MESG_TYPE_LAP, :count => 32 });
+            } catch (ex) {
+                // On unsupported devices the native laps still work without text metadata.
+            }
             session.start();
             G.state["rec"] = w["id"];
         } catch (ex) {
@@ -419,10 +492,35 @@ module Workout {
                 // nothing to save
             }
             session = null;
+            lapDetailField = null;
         }
         if (G.state["w"] == null && (Sensor has :setEnabledSensors)) {
             Sensor.setEnabledSensors([]);
         }
+    }
+
+    (:small)
+    function traceSample(h) { }
+    (:big)
+    function traceSample(h) {
+        if (G.state["w"] == null || h == null || h <= 0) { return; }
+        var t = Core.nowMs();
+        if (traceLast > 0l && t - traceLast < TRACE_INTERVAL_MS) { return; }
+        traceLast = t;
+        traceBuf.add([t, h]);
+        if (traceBuf.size() >= TRACE_BATCH_SIZE) { flushTrace(); }
+    }
+
+    (:small)
+    function flushTrace() { }
+    (:big)
+    function flushTrace() {
+        if (traceWid == null || traceBuf.size() == 0) { return; }
+        // Send the full timestamps, not extrapolated set averages; the phone deduplicates samples.
+        var samples = traceBuf;
+        traceBuf = [];
+        Link.send({ "id" => Core.newId(), "type" => "hrTrace", "wid" => traceWid,
+            "at" => samples[samples.size() - 1][0], "samples" => samples });
     }
 
     function sample() {
@@ -432,6 +530,7 @@ module Workout {
         if (h == null || h <= 0 || G.state["w"] == null) {
             return;
         }
+        traceSample(h);
         setSum += h; setN += 1; if (h > setMax) { setMax = h; }
         allSum += h; allN += 1; if (h > allMax) { allMax = h; }
     }

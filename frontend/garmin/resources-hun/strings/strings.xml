@@ -68,4 +68,6 @@
     <string id="weight">Súly</string>
     <string id="workout">Edzés</string>
     <string id="workout_saved">Edzés mentve</string>
+    <string id="exercise_set_detail">Exercise and set</string>
+    <string id="record_set_laps">Körök sorozatonként</string>
 </strings>

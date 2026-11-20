@@ -75,6 +75,13 @@ on some, MIP and black-and-white screens, and as little as 92 KB for the whole a
 - Heart rate: the watch's optical sensor (`Toybox.Sensor` / `Activity.Info.currentHeartRate`)
   while a workout runs. Each set logged on the watch carries `hr: { avg, max }`, exactly what the
   Apple Watch and Wear OS send, so the phone shows it per set the same way.
+  On big-memory Connect IQ watches (including Forerunner 965), the app additionally buffers
+  timestamped optical HR readings roughly every 10 seconds. Small acknowledged batches are sent
+  through the existing phone bridge before set events and workout Finish; the phone saves them
+  as a workout-level trace. No imported Garmin Connect FIT file is required. The Forerunner 55
+  and other small-memory variants keep per-set summaries without the full trace.
+  The trace depends on the phone receiving the buffered events; test reconnects before relying
+  on it, especially for workouts with long periods out of Bluetooth range.
 
 Not here (the Apple Watch has them): the weigh-in before a start, the keypad, music (Garmin has its
 own music controls), exercise pictures, a glance. The forgotten-workout check only asks, it never
@@ -318,7 +325,7 @@ Android: the link only starts once that page was opened).
 
 With "Also save to Garmin Connect" on (the watch app's one setting, default on, changed in the
 Connect IQ app on the phone), the watch records the workout as an activity
-(`ActivityRecording`, `SPORT_TRAINING` / `SUB_SPORT_STRENGTH_TRAINING`) with a lap per set. It lands
+(`ActivityRecording`, `SPORT_TRAINING` / `SUB_SPORT_STRENGTH_TRAINING`) without automatically adding a lap for each set (to avoid spoken lap announcements). It lands
 in Garmin Connect with its duration, heart rate and calories, and counts towards training load,
 intensity minutes and the rest of Garmin's numbers. Saved at Finish, thrown away at Discard; if the
 app is closed mid-workout, what was recorded is kept and not started again for that workout.
@@ -490,3 +497,7 @@ Hindi, Bengali or Persian, and one Portuguese (pt).
 wants each upload's version higher than the last, which the release number already is.
 `node frontend/garmin/check.mjs` fails when it is not `frontend/package.json`'s, so the release
 bump has to touch it.
+
+### Set-lap menu and details
+
+From the watch's workout menu, select **Record set laps** to toggle Garmin native laps (default off). Turning these on may restore audible "Lap N" announcements if Garmin's global lap alert is enabled; the menu cannot override that system prompt. The FIT developer lap field records a brief exercise/set label where supported. Sideloaded builds can write this field, but Garmin Connect generally requires store metadata to display custom columns. Regardless of this toggle, OpenGym's exercise/set log and the timestamped HR trace go to the phone and OpenGym server independently.

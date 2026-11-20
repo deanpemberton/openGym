@@ -68,4 +68,6 @@
     <string id="weight">الوزن</string>
     <string id="workout">التمرين</string>
     <string id="workout_saved">تم حفظ التمرين</string>
+    <string id="exercise_set_detail">Exercise and set</string>
+    <string id="record_set_laps">لفات المجموعات</string>
 </strings>

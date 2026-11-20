@@ -68,4 +68,6 @@
     <string id="weight">Mức tạ</string>
     <string id="workout">Buổi tập</string>
     <string id="workout_saved">Đã lưu buổi tập</string>
+    <string id="exercise_set_detail">Exercise and set</string>
+    <string id="record_set_laps">Vòng mỗi hiệp</string>
 </strings>

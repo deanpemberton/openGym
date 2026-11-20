@@ -68,4 +68,6 @@
     <string id="weight">Vikt</string>
     <string id="workout">Pass</string>
     <string id="workout_saved">Passet sparat</string>
+    <string id="exercise_set_detail">Exercise and set</string>
+    <string id="record_set_laps">Varv per set</string>
 </strings>

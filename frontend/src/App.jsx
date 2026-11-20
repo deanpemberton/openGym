@@ -28,7 +28,7 @@ import { applyOrientation } from './lib/orientation.js'
 import { initBackButton } from './lib/back.js'
 import { installEdgeSwipeBack, BACK_PREVIEW_EVENT } from './lib/edge-swipe-back.js'
 import { pageMotion } from './lib/page-motion.js'
-import { startWatchSync, bindWatchAppActions, patchSetIn, watchStatus, watchClaimed, onWatchClaim, markDiscarded, notePhoneOpen, ensureWatchSet } from './lib/watch-sync.js'
+import { startWatchSync, bindWatchAppActions, patchSetIn, watchStatus, watchClaimed, onWatchClaim, markDiscarded, notePhoneOpen, ensureWatchSet, appendWatchHrTrace } from './lib/watch-sync.js'
 import { buildSessionEntry } from './lib/session-start.js'
 import { EXIDX } from './lib/exercises.js'
 import { readWatchPrefs, readWatchStatus } from './lib/watch-settings.js'
@@ -531,6 +531,9 @@ export default function App() {
       healthDeleted: () => { import('./lib/health-sync.js').then(m => m.syncHealth(useStore.getState().S)).catch(() => {}) },
       patchSet: (where, fields, opts = {}) => useStore.getState().update(s => {
         patchSetIn(s, where, fields, stampWorkout, { ...opts, recount: w => { w.vol = workoutVolume(w) } })
+      }),
+      patchTrace: (wid, samples) => useStore.getState().update(s => {
+        appendWatchHrTrace(s, wid, samples, stampWorkout)
       }),
       // A set from the watch for a row the running workout does not have (the exercise taken out
       // here meanwhile, a routine changed since the watch last heard): the workout gets the row with
