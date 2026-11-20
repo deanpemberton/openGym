@@ -1,4 +1,4 @@
-/* Run: node scripts/audit-strava-exercises.mjs [--json]
+/* Run: node scripts/audit-strava-exercises.mjs [--json|--csv]
  * Reports every built-in exercise against Strava's documented exercise taxonomy.
  * Unmapped exercises stay in the activity description; they are never mislabeled.
  */
@@ -8,11 +8,14 @@ import { stravaExerciseMapping } from '../integrations/providers/strava-exercise
 
 const count = { exact:0, equivalent:0, generic:0, unsupported:0 };
 const byRegion = {};
+const csv = [['opengym_id','exercise_name','body_part','equipment','match_kind','strava_exercise_type']];
+const esc = x => '"'+String(x??'').replaceAll('"','""')+'"';
 const unsupportedSamples = [];
 const invalid = [];
 for (const entry of LIBRARY) {
   const result = stravaExerciseMapping({id:entry.id, name:entry.n});
   count[result.kind] = (count[result.kind] || 0) + 1;
+  csv.push([entry.id,entry.n,entry.bp,entry.eq,result.kind,result.type||'']);
   byRegion[entry.bp] ||= {total:0,mapped:0,unsupported:0};
   byRegion[entry.bp].total++;
   if(result.type) byRegion[entry.bp].mapped++;
@@ -33,5 +36,6 @@ const report = {
   invalid_strava_identifiers:invalid,
   first_unmapped:unsupportedSamples,
 };
-console.log(JSON.stringify(report,null,process.argv.includes('--json')?0:2));
+if(process.argv.includes('--csv')) console.log(csv.map(row=>row.map(esc).join(',')).join('\n'));
+else console.log(JSON.stringify(report,null,process.argv.includes('--json')?0:2));
 if(invalid.length) process.exitCode=1;
