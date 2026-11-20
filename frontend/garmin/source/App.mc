@@ -403,13 +403,6 @@ module Workout {
         }
     }
 
-    //! A set done: a lap in the recording, so Garmin Connect shows the sets apart.
-    function lap() {
-        if (session != null && session.isRecording()) {
-            session.addLap();
-        }
-    }
-
     //! The recording stopped: saved (finished) or thrown away (discarded).
     function end(keep) {
         if (session != null) {
