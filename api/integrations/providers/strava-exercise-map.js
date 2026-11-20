@@ -254,6 +254,7 @@ function preferredVariant(name, entry) {
       return 'MACHINE_CHEST_PRESS';
     }
     if (equipment==='barbell') {
+      if (/\bdecline\b|\breverse\s*grip\b/.test(name)) return 'BENCH_PRESS_GENERIC';
       if (/\bincline\b/.test(name)) return 'INCLINE_BARBELL_BENCH_PRESS';
       if (/\b(?:close|narrow)\s*grip\b/.test(name)) return 'CLOSE_GRIP_BARBELL_BENCH_PRESS';
       return 'BARBELL_BENCH_PRESS';
@@ -271,6 +272,11 @@ function preferredVariant(name, entry) {
     return 'ROMANIAN_DEADLIFTS';
   }
   if (/\bdeadlift\b/.test(name) && (region==='upper legs'||region==='back')) {
+    // A single-leg deadlift is biomechanically distinct from the standard
+    // bilateral lift; preserve that distinction instead of assigning a
+    // falsely precise BARBELL_DEADLIFT or DUMBBELL_DEADLIFT label.
+    if (/\b(?:one|single)\s*leg\b/.test(name))
+      return /\bstraight\s*leg\b/.test(name) ? 'SINGLE_LEG_STRAIGHT_LEG_DEADLIFT' : 'DEADLIFT_GENERIC';
     if (equipment==='trap bar') return 'TRAP_BAR_DEADLIFT';
     if (equipment==='barbell') return 'BARBELL_DEADLIFT';
     if (equipment==='dumbbell') return 'DUMBBELL_DEADLIFT';
@@ -299,10 +305,19 @@ function preferredVariant(name, entry) {
     return 'HIP_THRUST';
   }
   if (/\b(?:hammer\s*curl)\b/.test(name) && region==='upper arms' && equipment==='dumbbell') return 'DUMBBELL_HAMMER_CURL';
-  if (/\b(?:biceps?\s*curl|curl)\b/.test(name) && region==='upper arms') {
+  if (/\b(?:bicep\s*curl|curl)\b/.test(name) && region==='upper arms') {
+    if (/\breverse\b/.test(name)) {
+      if (equipment==='barbell' && !/\bwrist\b/.test(name)) return 'BARBELL_REVERSE_CURL';
+      if (equipment==='cable' && !/\bwrist\b/.test(name)) return 'REVERSE_CABLE_CURLS';
+      return 'CURL_GENERIC';
+    }
+    if (/\bconcentration\b/.test(name)) return 'CONCENTRATION_CURL';
+    if (/\bspider\b/.test(name)) return 'SPIDER_CURL';
+    if (/\bpreacher\b/.test(name)) return 'CURL_GENERIC';
+    if (equipment==='dumbbell' && /\bincline\b/.test(name)) return 'INCLINE_DUMBBELL_BICEPS_CURL';
     if (equipment==='cable') return 'CABLE_BICEPS_CURL';
     if (equipment==='barbell') return 'BARBELL_BICEPS_CURL';
-    if (equipment==='dumbbell') return 'STANDING_DUMBBELL_BICEPS_CURL';
+    if (equipment==='dumbbell') return /\b(?:seated|prone)\b/.test(name) ? 'CURL_GENERIC' : 'STANDING_DUMBBELL_BICEPS_CURL';
   }
   if (/\b(?:face\s*pull)\b/.test(name) && region==='shoulders') return 'FACE_PULL';
   if (/\b(?:triceps?|tricep)\s*(?:pushdown|pressdown|push\s*down)\b/.test(name) && region==='upper arms')
