@@ -231,7 +231,11 @@ export function stravaProvider({ env = process.env, fetchFn = globalThis.fetch, 
           if (renewed.error) return renewed.error;
           result = await deliverStructuredStrength(job, renewed.access, w, act, { fetchFn, timezone: env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' });
         }
-        return result;
+        // A workout consisting entirely of exercises Strava does not support
+        // still deserves an activity. No JSON POST was attempted when the
+        // mapper returned zero sets, so the original manual path is safe.
+        if (result.code !== 'structure' || result.msg !== 'No mapped exercise sets')
+          return result;
       }
       let res;
       try { res = await authed(fetchFn, ACTIVITY_URL, token, act); }
