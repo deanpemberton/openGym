@@ -117,3 +117,16 @@ test('existing Strava Integration Test routine maps all five programmed working 
   ]);
   assert.deepEqual(sets.map(s=>s.weight),[40,40,10,10,60]);
 });
+
+test('a completed sub-minute workout uses exact start/end seconds, not rounded durationMin=0', () => {
+  const start = '2026-11-20T01:22:14.000Z';
+  const end = '2026-11-20T01:22:26.000Z';
+  const actual = strengthJson({...workout,startedAt:start,endedAt:end,durationMin:0}, {timezone:'Pacific/Auckland'});
+  assert.equal(actual.reason,undefined);
+  assert.equal(actual.json.elapsed_time,12);
+  assert.equal(actual.json.utc_offset,46800);
+  assert.equal(strengthJson({...workout,startedAt:start,endedAt:start,durationMin:0}).json,null,
+    'zero length without a positive fallback must still fail closed');
+  assert.equal(strengthJson({...workout,startedAt:start,endedAt:'not-a-date',durationMin:0}).json,null);
+  assert.equal(strengthJson({...workout,startedAt:start,endedAt:'not-a-date',durationMin:1}).json.elapsed_time,60);
+});
