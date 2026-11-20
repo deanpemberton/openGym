@@ -65,9 +65,9 @@ function exerciseName(id, doc) {
 
 const isWarmup = s => (s?.phase != null && s.phase !== '' ? s.phase === 'warmup' : s?.warmup === true);
 
-function setOut(s) {
+function setOut(s, forStrava = false) {
   if (s?.sides && typeof s.sides === 'object' && s.sides.L && s.sides.R) {
-    return { sides: { left: setOut(s.sides.L), right: setOut(s.sides.R) } };
+    return { sides: { left: setOut(s.sides.L, forStrava), right: setOut(s.sides.R, forStrava) } };
   }
   const o = {};
   if (num(s.w) != null) o.weight = s.w;
@@ -80,16 +80,17 @@ function setOut(s) {
   if (num(s.incline) != null) o.incline = s.incline;
   if (num(s.rpe) != null) o.rpe = s.rpe;
   if (num(s.rir) != null) o.rir = s.rir;
+  if (forStrava && num(s.at) != null) o.at = s.at;
   if (isWarmup(s)) o.warmup = true;
   return o;
 }
 const done = s => (s?.sides ? s.sides.L?.done === true || s.sides.R?.done === true : s?.done === true);
 
-export function workoutPayload(w, doc) {
+export function workoutPayload(w, doc, { forStrava = false } = {}) {
   const exercises = list(w.entries).slice(0, MAX_EXERCISES).map(e => ({
     id: String(e.id).slice(0, 40),
     name: exerciseName(e.id, doc),
-    sets: list(e.sets).filter(done).slice(0, MAX_SETS).map(setOut),
+    sets: list(e.sets).filter(done).slice(0, MAX_SETS).map(s => setOut(s, forStrava)),
   }));
   let sets = 0, reps = 0, volume = 0;
   for (const e of exercises) for (const s of e.sets) {
@@ -110,6 +111,8 @@ export function workoutPayload(w, doc) {
     bodyweight: num(w.bw),
     totals: { exercises: exercises.length, sets, reps, volume: Math.round(volume * 10) / 10 },
     exercises,
+    // The HR trace is private to Strava delivery, not general integration webhooks.
+    ...(forStrava && Array.isArray(w.hrTrace) ? { hrTrace: w.hrTrace.filter(p => Array.isArray(p) && p.length === 2 && num(p[0]) != null && num(p[1]) != null && p[1] >= 30 && p[1] <= 240 && p[0] >= (start || 0) - 30000 && p[0] <= (end || Date.now()) + 30000).slice(-2160) } : {}),
     records: (Array.isArray(w.prs) ? w.prs : []).slice(0, MAX_EXERCISES).map(id => ({ id: String(id).slice(0, 40), name: exerciseName(id, doc) })),
     ...(text(w.note, NOTE_MAX) ? { note: text(w.note, NOTE_MAX) } : {}),
   };
@@ -131,8 +134,8 @@ function recordsPayload(w, doc) {
 const weighinPayload = (b, doc) => ({ date: b.d.slice(0, 10), weight: b.w, unit: doc?.unit === 'lb' ? 'lb' : 'kg' });
 
 /** The `data` of an event, as a receiver gets it. */
-export function eventData(ev, doc) {
-  if (ev.type === 'workout.finished') return { workout: workoutPayload(ev.data, doc) };
+export function eventData(ev, doc, { provider = null } = {}) {
+  if (ev.type === 'workout.finished') return { workout: workoutPayload(ev.data, doc, { forStrava: provider === 'strava' }) };
   if (ev.type === 'workout.pr') return recordsPayload(ev.data, doc);
   if (ev.type === 'weighin.logged') return { weighin: weighinPayload(ev.data, doc) };
   return {};
