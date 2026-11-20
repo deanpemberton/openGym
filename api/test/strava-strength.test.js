@@ -4,6 +4,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { strengthJson, strengthSets, stravaExerciseType, deliverStructuredStrength } from '../integrations/providers/strava-strength.js';
+import { STRAVA_EXERCISE_GROUPS, STRAVA_EXERCISE_TYPES } from '../integrations/providers/strava-exercises.js';
+import { EXERCISES as OPENGYM_EXERCISES } from '../coach/core/library-data.js';
 
 const workout = {
   id:'watch-1795106827521', name:'Friday Full Body', unit:'kg',
@@ -129,4 +131,62 @@ test('a completed sub-minute workout uses exact start/end seconds, not rounded d
     'zero length without a positive fallback must still fail closed');
   assert.equal(strengthJson({...workout,startedAt:start,endedAt:'not-a-date',durationMin:0}).json,null);
   assert.equal(strengthJson({...workout,startedAt:start,endedAt:'not-a-date',durationMin:1}).json.elapsed_time,60);
+});
+
+test('complete documented Strava vocabulary is unique, uppercase and directly resolvable', () => {
+  assert.equal(Object.keys(STRAVA_EXERCISE_GROUPS).length,31);
+  assert.equal(STRAVA_EXERCISE_TYPES.length,572);
+  assert.equal(new Set(STRAVA_EXERCISE_TYPES).size,572);
+  for (const type of STRAVA_EXERCISE_TYPES) {
+    assert.match(type,/^[A-Z0-9_]+$/);
+    assert.equal(stravaExerciseType({id:'custom',name:type}),type);
+    assert.equal(stravaExerciseType({id:'custom',name:type.toLowerCase().replaceAll('_',' ')}),type);
+  }
+});
+test('built-in openGym catalogue resolves deterministic matches without guessing unknowns', () => {
+  assert.equal(OPENGYM_EXERCISES.length,5632);
+  const matches = OPENGYM_EXERCISES.map(ex => ({ex, type:stravaExerciseType({id:ex.id,name:ex.n})}))
+    .filter(x => x.type);
+  assert.ok(matches.length>=190, 'exercise mapping coverage regressed: ' + matches.length);
+  const supported = new Set(STRAVA_EXERCISE_TYPES);
+  for (const {ex,type} of matches) assert.ok(supported.has(type),ex.id + ' -> ' + type);
+  assert.equal(stravaExerciseType({id:'custom',name:'unknown custom movement'}),null);
+  assert.equal(stravaExerciseType({id:'custom',name:'band bench press'}),null,
+    'different equipment must not become a barbell/dumbbell bench press');
+  assert.equal(stravaExerciseType({id:'custom',name:'machine pec fly crossover variation'}),null,
+    'no fuzzy substitution of distinct exercises');
+});
+test('machine, Smith, postural and common gym nomenclature resolve conservatively', () => {
+  const examples = {
+    'lever chest press':'MACHINE_CHEST_PRESS',
+    'lever incline chest press':'MACHINE_INCLINE_CHEST_PRESS',
+    'lever hack squat':'MACHINE_HACK_SQUAT',
+    'lever seated shoulder press':'MACHINE_SEATED_SHOULDER_PRESS',
+    'cable kneeling woodchop v. 3':'CABLE_WOODCHOP',
+    'smith squat':'SMITH_MACHINE_SQUAT',
+    'smith incline bench press':'SMITH_MACHINE_INCLINE_BENCH_PRESS',
+    'cable one arm tricep pushdown':'CABLE_SINGLE_ARM_TRICEPS_PUSHDOWN',
+    'barbell full squat':'BARBELL_SQUAT',
+    'barbell incline bench press':'INCLINE_BARBELL_BENCH_PRESS',
+    'dumbbell fly':'DUMBBELL_FLYE',
+    'sit-up':'SIT_UP_GENERIC',
+    'plank':'PLANK_GENERIC',
+    'barbell split squat v. 2':'BARBELL_SPLIT_SQUAT',
+    'dumbbell biceps curl':'STANDING_DUMBBELL_BICEPS_CURL',
+    'cable standing face pull':'FACE_PULL',
+    'rope cable curl':'ROPE_CABLE_CURL',
+  };
+  for(const [name,type] of Object.entries(examples))
+    assert.equal(stravaExerciseType({id:'custom',name}),type,name);
+});
+test('all documented types can become valid sets; warmups and unknowns still excluded', () => {
+  const names = STRAVA_EXERCISE_TYPES.filter(x=>!x.endsWith('_GENERIC')).slice(0,25);
+  const obj = {unit:'kg',exercises:[
+    ...names.map((name,i)=>({id:'custom'+i,name,sets:[{reps:8,weight:20},{warmup:true,reps:5,weight:10}]})),
+    {id:'unmapped',name:'nonexistent acrobatic manoeuvre',sets:[{reps:10,weight:20}]},
+  ]};
+  const {sets,unmapped}=strengthSets(obj);
+  assert.equal(sets.length,25);
+  assert.deepEqual(sets.map(x=>x.exercise_type),names);
+  assert.equal(unmapped.length,1);
 });
