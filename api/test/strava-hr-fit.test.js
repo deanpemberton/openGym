@@ -89,8 +89,13 @@ test('Strava server uploads FIT, polls once by upload ID, posts no duplicate act
     h.update('user', conn.id, { strength: true });
     assert.equal(h.onStateWrite('user', doc, { ...doc, workouts: [workout] }), 1);
     await h._outbox().run();
+    assert.equal(posted, 0, 'wait for the last HR batch after phone Finish');
+    const late = { ...workout, hrTrace: [...workout.hrTrace, [start + 40000, 152]] };
+    assert.equal(h.onStateWrite('user', { ...doc, workouts: [workout] }, { ...doc, workouts: [late] }), 0);
+    clock += 60001;
+    await h._outbox().run();
     assert.equal(posted, 1);
-    assert.deepEqual(decodeRecords(bytes).map(x => x[3]), [100,112,125,141]);
+    assert.deepEqual(decodeRecords(bytes).map(x => x[3]), [100,112,125,141,152]);
     // Deferred processing is persisted with the job, so it cannot post twice.
     assert.equal(h._outbox().counts('user', conn.id).queued, 1);
     clock += 20001;
