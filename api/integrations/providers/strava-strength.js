@@ -124,6 +124,9 @@ function candidateNames(name) {
   }
   return names;
 }
+// openGym sometimes stores left + right repetitions as one aggregate set.
+// Split only documented unilateral exercise IDs; never divide arbitrary reps.
+const AGGREGATE_SIDES = new Set(['1204', '4948', '11251']);
 const valid = n => typeof n === 'number' && Number.isFinite(n) && n >= 0;
 const rounded = n => Math.round(n * 1000) / 1000;
 export function stravaExerciseType(ex) {
