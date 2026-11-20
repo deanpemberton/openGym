@@ -68,4 +68,6 @@
     <string id="weight">Вес</string>
     <string id="workout">Тренировка</string>
     <string id="workout_saved">Тренировка сохранена</string>
+    <string id="exercise_set_detail">Exercise and set</string>
+    <string id="record_set_laps">Круги для подходов</string>
 </strings>

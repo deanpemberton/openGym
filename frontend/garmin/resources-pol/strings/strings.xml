@@ -68,4 +68,6 @@
     <string id="weight">Ciężar</string>
     <string id="workout">Trening</string>
     <string id="workout_saved">Trening zapisany</string>
+    <string id="exercise_set_detail">Exercise and set</string>
+    <string id="record_set_laps">Okrążenia za serie</string>
 </strings>
