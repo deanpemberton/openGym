@@ -5,11 +5,12 @@
 import { LIBRARY } from '../coach/core/library.js';
 import { STRAVA_EXERCISE_TYPES } from '../integrations/providers/strava-exercises.js';
 import { stravaExerciseMapping } from '../integrations/providers/strava-exercise-map.js';
+import { safeCsvCell } from './strava-csv.js';
 
 const count = { exact:0, equivalent:0, generic:0, unsupported:0 };
 const byRegion = {};
 const csv = [['opengym_id','exercise_name','body_part','equipment','match_kind','strava_exercise_type']];
-const esc = x => '"'+String(x??'').replaceAll('"','""')+'"';
+const esc = safeCsvCell;
 const unsupportedSamples = [];
 const invalid = [];
 for (const entry of LIBRARY) {
