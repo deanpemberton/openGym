@@ -51,3 +51,16 @@ test('catalogue-linked uncommon variants resolve to a supported class, never fab
     if(val.type) assert(supported.has(val.type),entry.n);
   }
 });
+
+test('unusual variants do not inherit misleading equipment or posture labels', () => {
+  const expected = {
+    '0033':'BENCH_PRESS_GENERIC', // decline barbell press isn't a flat bench press
+    '0297':'CONCENTRATION_CURL',
+    '0315':'INCLINE_DUMBBELL_BICEPS_CURL',
+    '0318':'INCLINE_DUMBBELL_BICEPS_CURL',
+    '0206':'REVERSE_CABLE_CURLS',
+    '1756':'DEADLIFT_GENERIC', // a single-leg deadlift isn't bilateral
+  };
+  for(const [id,type] of Object.entries(expected))
+    assert.equal(stravaExerciseType({id}),type,id+' needs a safe mapping');
+});
