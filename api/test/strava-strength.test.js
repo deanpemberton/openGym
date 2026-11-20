@@ -197,7 +197,7 @@ test('all documented types can become valid sets; warmups and unknowns still exc
 
 test('HMAC external IDs are opaque, stable, isolated by profile and never reveal watch IDs', () => {
   const a={uid:'person-a',key:'delivery-a'}, b={uid:'person-b',key:'delivery-a'};
-  const source={id:'watch-1234567890987'};
+  const source={id:'synthetic-device-identifier'};
   const id=opaqueExternalId(a,source,directOpts.externalIdKey);
   assert.match(id,/^opengym-[a-f0-9]{64}$/);
   assert.equal(id,opaqueExternalId({...a},source,directOpts.externalIdKey));
