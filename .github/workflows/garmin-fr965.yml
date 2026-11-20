@@ -1,0 +1,113 @@
+# Build a sideloadable OpenGym Connect IQ app for Garmin Forerunner 965.
+# Server deployment and the Strava integration are not changed by this job.
+name: Garmin FR965 PRG
+
+on:
+  push:
+    branches: [main, 'ci-garmin-*']
+    paths:
+      - 'frontend/garmin/**'
+      - '.github/workflows/garmin-fr965.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: garmin-fr965-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fr965:
+    name: Build and package FR965 app
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Connect IQ SDK and device definitions
+        uses: DuckSoft/setup-connectiq-actions@64f7145dcd1087c262d89f5f714fa03af27b3cba
+        with:
+          sdk-version: '9.2.0'
+          install-devices: 'true'
+
+      - name: Validate source and device manifest
+        run: node frontend/garmin/check.mjs "$CONNECT_IQ_HOME"
+
+      # For sideload-only testing, an ephemeral signing key works. Set
+      # GARMIN_DEVELOPER_KEY (base64-encoded DER) as an Actions secret
+      # before relying on a stable signing identity across builds.
+      - name: Prepare private signing key
+        shell: bash
+        env:
+          GARMIN_KEY_BASE64: ${{ secrets.GARMIN_DEVELOPER_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$RUNNER_TEMP/garmin-developer-key.der"
+          if [[ -n "$GARMIN_KEY_BASE64" ]]; then
+            printf '%s' "$GARMIN_KEY_BASE64" | base64 --decode > "$key"
+            openssl pkey -inform DER -in "$key" -noout
+            echo "Using configured developer signing key."
+          else
+            echo "::warning::GARMIN_DEVELOPER_KEY is not set; using a temporary signing key. This may prevent in-place updates to earlier sideloads."
+            openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 \
+              -out "$RUNNER_TEMP/garmin-developer-key.pem"
+            openssl pkcs8 -topk8 -inform PEM -outform DER \
+              -in "$RUNNER_TEMP/garmin-developer-key.pem" \
+              -out "$key" -nocrypt
+          fi
+          chmod 600 "$key"
+
+      - name: Compile Forerunner 965 application
+        working-directory: frontend/garmin
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bin
+          monkeyc -f monkey.jungle -d fr965 \
+            -y "$RUNNER_TEMP/garmin-developer-key.der" \
+            -o bin/opengym-fr965.prg -w
+          test -s bin/opengym-fr965.prg
+          # Compile the bundled Monkey C unit-test sources as a separate target.
+          monkeyc -f monkey.jungle -d fr965 -t \
+            -y "$RUNNER_TEMP/garmin-developer-key.der" \
+            -o bin/opengym-fr965-test.prg -w
+          test -s bin/opengym-fr965-test.prg
+
+      - name: Package and describe the build
+        working-directory: frontend/garmin
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum bin/opengym-fr965.prg > bin/opengym-fr965.prg.sha256
+          {
+            echo "OpenGym Forerunner 965 sideload build"
+            echo "Source commit: $GITHUB_SHA"
+            echo "SDK version: 9.2.0"
+            echo "Watch target: fr965"
+            echo "Connect watch to computer; copy PRG into GARMIN/APPS; eject."
+            echo "This artifact is a watch app build, not the phone bridge or server."
+          } > bin/README.txt
+          cat bin/README.txt
+          cat bin/opengym-fr965.prg.sha256
+
+      - name: Upload downloadable watch build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: opengym-fr965-${{ github.run_number }}
+          path: |
+            frontend/garmin/bin/opengym-fr965.prg
+            frontend/garmin/bin/opengym-fr965.prg.sha256
+            frontend/garmin/bin/README.txt
+          if-no-files-found: error
+          retention-days: 30
