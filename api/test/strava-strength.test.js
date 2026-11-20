@@ -3,7 +3,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { strengthJson, strengthSets, stravaExerciseType, deliverStructuredStrength } from '../integrations/providers/strava-strength.js';
+import { strengthJson, strengthSets, stravaExerciseType, deliverStructuredStrength, opaqueExternalId } from '../integrations/providers/strava-strength.js';
 import { STRAVA_EXERCISE_GROUPS, STRAVA_EXERCISE_TYPES } from '../integrations/providers/strava-exercises.js';
 import { EXERCISES as OPENGYM_EXERCISES } from '../coach/core/library-data.js';
 
@@ -20,6 +20,8 @@ const workout = {
 };
 const act = { name:'Illustrative Strength Session', description:'Exercise detail text' };
 const reply = (status, body) => ({ status, json:async () => body });
+const directOpts = { externalIdKey: 'synthetic-strava-test-HMAC-key-32bytes' };
+
 
 test('supported exercises become ordered sets; warmups and unknown names are never mislabeled', () => {
   const { sets, unmapped } = strengthSets(workout);
@@ -67,14 +69,15 @@ test('documented Strava identifiers across representative sample movements', () 
   for(const [id,name] of Object.entries(expected)) assert.equal(stravaExerciseType({id}),name);
 });
 test('POST once, then polling uses the persisted upload ID', async () => {
-  const job={key:'test'}, calls=[];
+  const job={key:'test',uid:'fixture-user'}, calls=[];
   let polls=0;
   const mock=async(url,opts)=>{
     calls.push({url,method:opts.method});
     if(opts.method==='POST'){
       assert.equal(opts.body.get('data_type'),'json');
       assert.equal(opts.body.get('sport_type'),'WeightTraining');
-      assert.equal(opts.body.get('external_id'),'opengym-'+workout.id);
+      assert.equal(opts.body.get('external_id'),opaqueExternalId(job,workout,directOpts.externalIdKey));
+      assert.doesNotMatch(opts.body.get('external_id'),/fixture-session-001|watch-|fixture-user/);
       const file=JSON.parse(await opts.body.get('file').text());
       assert.equal(file.sets.length,5);
       return reply(201,{id_str:'12345',id:12345});
@@ -82,26 +85,26 @@ test('POST once, then polling uses the persisted upload ID', async () => {
     polls++;
     return reply(200,polls===1?{id:12345,activity_id:null}:{id:12345,activity_id:987});
   };
-  assert.deepEqual(await deliverStructuredStrength(job,'token',workout,act,{fetchFn:mock,timezone:'America/New_York'}),{defer:15000});
+  assert.deepEqual(await deliverStructuredStrength(job,'token',workout,act,{fetchFn:mock,timezone:'America/New_York',...directOpts}),{defer:15000});
   assert.equal(job.stravaUploadId,'12345');
-  assert.equal((await deliverStructuredStrength(job,'token',workout,act,{fetchFn:mock})).activityId,'987');
+  assert.equal((await deliverStructuredStrength(job,'token',workout,act,{fetchFn:mock,...directOpts})).activityId,'987');
   assert.equal(calls.filter(x=>x.method==='POST').length,1);
 });
 test('ambiguous POST outcome never automatically retries and risks duplication', async () => {
-  const job={key:'uncertain'};
-  const res=await deliverStructuredStrength(job,'token',workout,act,{fetchFn:async()=>{throw Error('network dropped')}});
+  const job={key:'uncertain',uid:'fixture-user'};
+  const res=await deliverStructuredStrength(job,'token',workout,act,{fetchFn:async()=>{throw Error('network dropped')},...directOpts});
   assert.equal(res.retry,false);
   assert.equal(job.stravaUploadId,undefined);
 });
 test('429/5xx retry, 400/401 refusal, and polling errors are explicit',async()=>{
   for(const status of [400,401,429,503]){
-    const res=await deliverStructuredStrength({key:'x'},'token',workout,act,{fetchFn:async()=>reply(status,{})});
+    const res=await deliverStructuredStrength({key:'x',uid:'fixture-user'},'token',workout,act,{fetchFn:async()=>reply(status,{}),...directOpts});
     assert.equal(res.ok,false);
     assert.equal(res.status,status);
     assert.equal(res.retry,status===429); // a 5xx after upload POST is ambiguous
   }
-  const job={key:'poll-failed',stravaUploadId:'77'};
-  const res=await deliverStructuredStrength(job,'token',workout,act,{fetchFn:async()=>reply(429,{})});
+  const job={key:'poll-failed',uid:'fixture-user',stravaUploadId:'77'};
+  const res=await deliverStructuredStrength(job,'token',workout,act,{fetchFn:async()=>reply(429,{}),...directOpts});
   assert.equal(res.retry,true);
   assert.equal(job.stravaUploadId,'77');
 });
@@ -189,4 +192,52 @@ test('all documented types can become valid sets; warmups and unknowns still exc
   assert.equal(sets.length,25);
   assert.deepEqual(sets.map(x=>x.exercise_type),names);
   assert.equal(unmapped.length,1);
+});
+
+
+test('HMAC external IDs are opaque, stable, isolated by profile and never reveal watch IDs', () => {
+  const a={uid:'person-a',key:'delivery-a'}, b={uid:'person-b',key:'delivery-a'};
+  const source={id:'watch-1234567890987'};
+  const id=opaqueExternalId(a,source,directOpts.externalIdKey);
+  assert.match(id,/^opengym-[a-f0-9]{64}$/);
+  assert.equal(id,opaqueExternalId({...a},source,directOpts.externalIdKey));
+  assert.notEqual(id,opaqueExternalId(b,source,directOpts.externalIdKey));
+  assert.notEqual(id,opaqueExternalId(a,{id:'other-workout'},directOpts.externalIdKey));
+  assert.doesNotMatch(id,/watch|1234567890987|person-a/);
+  assert.throws(()=>opaqueExternalId(a,source,null),/key missing/);
+});
+test('a saved uncertain upload intent blocks a duplicate POST on process restart',async()=>{
+  const job={uid:'fixture-user',key:'restart',stravaUploadAttempted:true};
+  let calls=0;
+  const res=await deliverStructuredStrength(job,'token',workout,act,{
+    ...directOpts,fetchFn:async()=>{calls++; throw Error('should not POST');}
+  });
+  assert.equal(calls,0);
+  assert.equal(res.retry,false);
+  assert.equal(res.code,'unknown-upload');
+});
+test('checkpoint failure before POST fails closed without sending anything',async()=>{
+  const job={uid:'fixture-user',key:'checkpoint-rejected'};
+  let calls=0;
+  const res=await deliverStructuredStrength(job,'token',workout,act,{
+    ...directOpts,
+    checkpoint:()=>{throw Error('simulated disk full');},
+    fetchFn:async()=>{calls++; throw Error('should not POST');},
+  });
+  assert.equal(calls,0);
+  assert.equal(res.code,'checkpoint');
+  assert.equal(res.retry,false);
+  assert.equal(job.stravaUploadAttempted,true);
+});
+test('401/429 definitive rejection clears intent for safe refresh or rate retry',async()=>{
+  for(const status of [401,429]){
+    const job={uid:'fixture-user',key:'refused-'+status}, saved=[];
+    const res=await deliverStructuredStrength(job,'token',workout,act,{
+      ...directOpts,checkpoint:patch=>saved.push({...patch}),
+      fetchFn:async()=>reply(status,{})
+    });
+    assert.equal(res.status,status);
+    assert.equal(job.stravaUploadAttempted,false);
+    assert.deepEqual(saved,[{stravaUploadAttempted:true},{stravaUploadAttempted:false}]);
+  }
 });
