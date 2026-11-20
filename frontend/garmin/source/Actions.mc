@@ -94,6 +94,8 @@ module Actions {
         }
         // The rest runs from the tick's own time, and the tick tells the phone where it ends.
         Rest.begin(Core.tickRest(s, ev, rs), rs);
+        // Send the partial HR batch before its set, so even a short workout has samples.
+        Workout.flushTrace();
         Link.send(ev);
         // Do not create Garmin laps per set: the watch announces "Lap 1", "Lap 2", etc.
         // OpenGym already carries each set (with its time and HR) in the phone sync.
