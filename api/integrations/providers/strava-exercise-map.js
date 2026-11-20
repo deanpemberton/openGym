@@ -10,7 +10,76 @@
  * taxonomy contains 509 types (2026-11-20). One-to-one mapping is impossible.
  */
 import { LIB_BY_ID } from '../../coach/core/library.js';
-import { STRAVA_SUPPORTED_EXERCISES } from './strava-exercise-types.js';
+import { STRAVA_EXERCISE_TYPES } from './strava-exercises.js';
+const STRAVA_SUPPORTED_EXERCISES = new Set(STRAVA_EXERCISE_TYPES);
+
+// Existing curated mappings are kept alongside the catalogue-wide resolver;
+// this preserves all exact upstream-tested aliases and IDs.
+const LEGACY_ID = Object.freeze({
+  '0025':'BARBELL_BENCH_PRESS','0294':'STANDING_DUMBBELL_BICEPS_CURL',
+  '0043':'BARBELL_SQUAT','0289':'DUMBBELL_BENCH_PRESS',
+  '0405':'SEATED_DUMBBELL_SHOULDER_PRESS','9698':'CHEST_SUPPORTED_ROW',
+  '1204':'SINGLE_ARM_LAT_PULLDOWN','4948':'SINGLE_ARM_LAT_PULLDOWN',
+  '0577':'MACHINE_CHEST_PRESS','11251':'CABLE_WOODCHOP',
+  '5609':'FACE_PULL','0868':'CABLE_CURL',
+  '0201':'CABLE_TRICEPS_PUSHDOWN','7384':'HIP_THRUST',
+  '5516':'MACHINE_HACK_SQUAT','2130':'WEIGHTED_DECLINE_CRUNCH',
+});
+const LEGACY_ALIASES = Object.freeze({
+  'barbell full squat':'BARBELL_SQUAT',
+  'barbell full squat back pov':'BARBELL_SQUAT',
+  'barbell full squat side pov':'BARBELL_SQUAT',
+  'dumbbell bicep curl':'STANDING_DUMBBELL_BICEPS_CURL',
+  'barbell bent over row':'BENT_OVER_BARBELL_ROW',
+  'dumbbell bent over row':'BENT_OVER_DUMBBELL_ROW',
+  'barbell incline bench press':'INCLINE_BARBELL_BENCH_PRESS',
+  'dumbbell incline bench press':'INCLINE_DUMBBELL_BENCH_PRESS',
+  'barbell close grip bench press':'CLOSE_GRIP_BARBELL_BENCH_PRESS',
+  'barbell wide bench press':'WIDE_GRIP_BARBELL_BENCH_PRESS',
+  'barbell sumo deadlift':'SUMO_DEADLIFT',
+  'barbell zercher squat':'ZERCHER_SQUAT',
+  'barbell full zercher squat':'ZERCHER_SQUAT',
+  'barbell overhead squat':'OVERHEAD_SQUAT',
+  'barbell seated shoulder press':'SEATED_BARBELL_PRESS',
+  'barbell seated overhead press':'SEATED_BARBELL_PRESS',
+  'barbell curl':'BARBELL_BICEPS_CURL',
+  'barbell clean and press':'DOUBLE_ARM_CLEAN_AND_PRESS_BARBELL',
+  'barbell jm bench press':'JM_PRESS',
+  'dumbbell seated shoulder press':'SEATED_DUMBBELL_SHOULDER_PRESS',
+  'dumbbell seated overhead press':'SEATED_DUMBBELL_SHOULDER_PRESS',
+  'dumbbell overhead press':'OVERHEAD_DUMBBELL_PRESS',
+  'dumbbell bulgarian split squat':'DUMBBELL_BULGARIAN_SPLIT_SQUATS',
+  'dumbbell bulgarian split squats':'DUMBBELL_BULGARIAN_SPLIT_SQUATS',
+  'dumbbell goblet squat':'DUMBBELL_GOBLET_SQUATS',
+  'cable one arm lat pulldown':'SINGLE_ARM_LAT_PULLDOWN',
+  'cable kneeling one arm lat pulldown':'SINGLE_ARM_LAT_PULLDOWN',
+  'cable standing face pull':'FACE_PULL',
+  'cable face pull':'FACE_PULL',
+  'cable kneeling woodchop':'CABLE_WOODCHOP',
+  'cable standing woodchop':'CABLE_WOODCHOP',
+  'cable pushdown':'CABLE_TRICEPS_PUSHDOWN',
+  'cable tricep pushdown':'CABLE_TRICEPS_PUSHDOWN',
+  'cable tricep extension':'CABLE_TRICEPS_PUSHDOWN',
+  'cable one arm tricep pushdown':'CABLE_SINGLE_ARM_TRICEPS_PUSHDOWN',
+  'cable standing crossover':'CABLE_CROSSOVER',
+  'cable rope hammer curl':'ROPE_CABLE_CURL',
+  'dumbbell bent over reverse fly':'DUMBBELL_REAR_DELT_FLY',
+  'dumbbell rear lateral raise':'DUMBBELL_REAR_DELT_FLY',
+  'dumbbell reverse fly':'DUMBBELL_REAR_DELT_FLY',
+  'lever hip thrust plate loaded':'HIP_THRUST',
+  'lever tricep extension':'MACHINE_TRICEP_EXTENSION',
+  'lever seated shoulder press':'MACHINE_SEATED_SHOULDER_PRESS',
+  'lever seated row':'MACHINE_SEATED_ROW',
+  'lever hack squat':'MACHINE_HACK_SQUAT',
+  'lever chest press':'MACHINE_CHEST_PRESS',
+  'lever incline chest press':'MACHINE_INCLINE_CHEST_PRESS',
+  'lever back extension':'MACHINE_BACK_EXTENSION',
+  'lever calf press':'MACHINE_CALF_PRESS',
+  'lever leg extension':'MACHINE_LEG_EXTENSION',
+  'lever bicep curl':'MACHINE_BICEP_CURL',
+  'lever pullover':'MACHINE_PULLOVER',
+  'weighted decline crunch':'WEIGHTED_DECLINE_CRUNCH',
+});
 
 const EXPLICIT_ID = Object.freeze({
   '0025': 'BARBELL_BENCH_PRESS',
@@ -93,10 +162,26 @@ export function normalizedExerciseName(input) {
 }
 
 // Keep this index exact: no stemming or token-order guesses for custom entries.
-const SUPPORTED_BY_NAME = new Map(
-  [...STRAVA_SUPPORTED_EXERCISES].map(id =>
-    [normalizedExerciseName(id), id])
-);
+const SUPPORTED_BY_NAME = new Map();
+for (const id of STRAVA_SUPPORTED_EXERCISES) {
+  const key = normalizedExerciseName(id);
+  // A collision must not silently map an ambiguous exercise to one type.
+  SUPPORTED_BY_NAME.set(key, SUPPORTED_BY_NAME.has(key) ? null : id);
+}
+function candidateNames(name) {
+  const all = new Set([name]);
+  for (const key of [...all]) {
+    if (key.startsWith('lever ')) all.add(key.replace(/^lever /, 'machine '));
+    if (key.startsWith('smith ')) all.add(key.replace(/^smith /, 'smith machine '));
+    if (key.startsWith('ez barbell ')) all.add(key.replace(/^ez barbell /, 'ez bar '));
+    if (key.includes(' one arm ')) all.add(key.replace(' one arm ', ' single arm '));
+    if (key.includes(' one leg ')) all.add(key.replace(' one leg ', ' single leg '));
+    if (key.startsWith('cable standing ')) all.add(key.replace(/^cable standing /,'cable '));
+    if (key.startsWith('cable kneeling ')) all.add(key.replace(/^cable kneeling /,'cable '));
+    if (key.endsWith(' on bench')) all.add(key.replace(/ on bench$/, ''));
+  }
+  return all;
+}
 
 // Movement families: intentionally anchored to the exercise concept and
 // restricted to the body region. A "stretch" is not a squat just because the
@@ -228,12 +313,17 @@ export function stravaExerciseMapping(ex) {
   const id = ex.id == null ? null : String(ex.id);
   const builtIn = id == null ? null : LIB_BY_ID.get(id);
   const name = normalizedExerciseName(builtIn?.n || ex.name);
-  const explicit = id && EXPLICIT_ID[id];
+  const explicit = id && (LEGACY_ID[id] || EXPLICIT_ID[id]);
   if (explicit) return {type:sanitize(explicit),kind:'exact'};
   if (!name) return {type:null,kind:'unsupported'};
-  const official = SUPPORTED_BY_NAME.get(name);
-  if (official) return {type:official,kind:'exact'};
-  const equivalent = NAME_EQUIVALENTS[name];
+  const candidates = new Set();
+  for (const key of candidateNames(name)) {
+    const type = SUPPORTED_BY_NAME.get(key);
+    if (type) candidates.add(type);
+  }
+  if (candidates.size === 1) return {type:[...candidates][0],kind:'exact'};
+  if (candidates.size > 1) return {type:null,kind:'unsupported'};
+  const equivalent = LEGACY_ALIASES[name] || NAME_EQUIVALENTS[name];
   if (equivalent) return {type:sanitize(equivalent),kind:'equivalent'};
   // For custom exercises, don't infer a movement from an arbitrary label.
   // Exact documented names and curated synonyms are supported above.
