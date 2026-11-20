@@ -218,7 +218,7 @@ module Core {
     // a watch with 92 KB about twice the memory, and a workout logged with the phone away can leave
     // dozens there). hr { avg, max } is kept as [avg, max]. Unpacked again only to be sent.
     // (protocol 2's fields last, so an outbox stored by an older app reads the same)
-    const EV_KEYS = ["id", "type", "at", "wid", "exId", "entryIdx", "setIdx", "w", "r", "sec", "side", "hr", "rir", "rpe", "routineIds", "sid", "restEnd", "endsAt", "off"];
+    const EV_KEYS = ["id", "type", "at", "wid", "exId", "entryIdx", "setIdx", "w", "r", "sec", "side", "hr", "rir", "rpe", "routineIds", "sid", "restEnd", "endsAt", "off", "samples"];
 
     //! The first 9 values by their place; from the 10th on (`sec`, `side`, `hr` ... `off`), those an
     //! event has, each after its place as a negative number (-9 .. -18). A set without most of
