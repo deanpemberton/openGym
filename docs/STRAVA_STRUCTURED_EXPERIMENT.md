@@ -6,12 +6,12 @@ Enable only on a test instance, after confirming that openGym's **Strava → Inc
 
 ```env
 STRAVA_STRUCTURED_STRENGTH=1
-TZ=Pacific/Auckland
+TZ=Pacific/Auckland # Replace with your own IANA time zone
 ```
 
 Without the flag, all existing Strava behaviour remains unchanged. The strength uploader uses `POST /api/v3/uploads` with `data_type=json`, then polls the upload ID. An accepted upload ID survives queue restarts. Uncertain initial POST results fail closed rather than risking duplicate activities.
 
-**Cautions:** The initial exercise mapping is deliberately limited to the known routines in this deployment. Unknown exercises are omitted from structured sets but retained in the existing human-readable activity description. Unilateral sets without explicit sides are split only for recognized single-arm/core exercises with even aggregate repetitions. openGym's raw dumbbell weight is preserved unchanged: per-hand versus combined conventions are user dependent. Review exercise weight in Strava before relying on volume totals.
+**Cautions:** Exercise mapping evaluates the full built-in catalogue, but not all movements have a safe Strava equivalent. Unsupported movements stay in the existing human-readable description; when none are supported, openGym falls back to a manual activity. Unilateral sets without explicit sides are split only for recognized single-arm/core exercises with even aggregate repetitions. openGym's raw dumbbell weight is preserved unchanged: per-hand versus combined conventions are user dependent. Review exercise weight in Strava before relying on volume totals.
 
 **Images:** Strava creates its own native muscle map from structured exercise sets. The existing public Strava API does not support uploading the PNG share card as an attached activity photo; that is not implemented in this initial feature branch.
 
@@ -28,7 +28,7 @@ npm test
 
 GitHub PR CI runs the standard `.github/workflows/test.yml` API suite on Node 26.
 
-**Safety:** This is experimental; do not enable on the production instance until a controlled private test workout has been inspected for duplicate prevention, exercise mapping, units and time zone.
+**Safety:** This remains opt-in and should be validated with a controlled private workout when enabling on a new instance. A live test on 20 November 2026 confirmed native sets, repetitions, weights and a muscle map in the Strava mobile app; it does not establish that every supported catalogue variant is rendered correctly.
 ## Strava's complete documented exercise vocabulary (20 November 2026)
 
 The integration now includes 572 distinct documented Strava `exercise_type` values
@@ -53,11 +53,7 @@ unique, read all 5,632 openGym catalogue entries, confirm the expected training
 routine mappings, and verify that unsupported names and equipment substitutions
 remain unmapped. Tests mock Strava and never upload a real activity.
 
-**Self-hosted deployment note:** This change adds a third required provider
-module, `strava-exercises.js`. The Flatnet API-only overlay image must copy
-all three files together. Importing the new mapper into the old two-file
-overlay will fail API startup. Leave the prior known-good API image available
-for rollback.
+**Self-hosted deployment note:** The structured upload feature imports its supporting exercise taxonomy and mapper modules. Build the complete updated API tree rather than copying only the modified Strava provider file into an older API image.
 
 
 ## Catalogue-wide Strava exercise mapping
