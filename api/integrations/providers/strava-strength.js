@@ -3,10 +3,26 @@
  * No network calls occur during import.
  * https://developers.strava.com/docs/uploads/
  */
+import crypto from 'node:crypto';
 import { stravaExerciseType } from './strava-exercise-map.js';
 export { stravaExerciseType } from './strava-exercise-map.js';
 
 export const STRUCTURED_UPLOAD_URL = 'https://www.strava.com/api/v3/uploads';
+
+/** Stable pseudonymous Strava external ID. Never upload a raw watch/workout ID.
+ * The server-secret-derived key is separate from OAuth and encryption keys.
+ */
+export function opaqueExternalId(job, workout, key) {
+  if (!key || (typeof key === 'string' && key.length < 16))
+    throw new Error('Strava external ID key missing');
+  const principal = String(job?.uid || '');
+  const identifier = String(workout?.id || job?.key || '');
+  if (!principal || !identifier) throw new Error('Strava upload identity missing');
+  const mac = crypto.createHmac('sha256', key)
+    .update('opengym-strength-external-id:v1\u0000')
+    .update(principal).update('\u0000').update(identifier).digest('hex');
+  return 'opengym-' + mac;
+}
 
 const AGGREGATE_SIDES = new Set(['1204', '4948', '11251']);
 const valid = n => typeof n === 'number' && Number.isFinite(n) && n >= 0;
@@ -70,6 +86,8 @@ export async function deliverStructuredStrength(job, token, workout, activity, {
   fetchFn = globalThis.fetch,
   timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   timeoutMs = 15000,
+  checkpoint = () => {},
+  externalIdKey = null,
 } = {}) {
   const { json, unmapped, reason } = strengthJson(workout, { timezone });
   if (!json) return { ok:false, retry:false, code:'structure', msg:reason };
@@ -77,14 +95,33 @@ export async function deliverStructuredStrength(job, token, workout, activity, {
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   timer.unref?.();
   try {
+    // A crash between a successful POST and receipt of its upload ID is
+    // ambiguous. Persist intent BEFORE sending and refuse a repeat POST on
+    // restart; a human can resolve the uncertain activity in Strava.
+    if (!job.stravaUploadId && job.stravaUploadAttempted) return {
+      ok:false, retry:false, code:'unknown-upload',
+      msg:'Previous upload may have reached Strava. Inspect the activity before retrying.',
+    };
+    const save = patch => {
+      Object.assign(job, patch);
+      checkpoint(patch); // strict synchronous, atomic outbox write when queued
+    };
     if (!job.stravaUploadId) {
+      let externalId;
+      try {
+        externalId = opaqueExternalId(job, workout, externalIdKey);
+        save({ stravaUploadAttempted:true });
+      } catch {
+        return {ok:false,retry:false,code:'checkpoint',
+          msg:'Cannot safely record Strava upload intent. No upload was attempted.'};
+      }
       const form = new FormData();
       form.append('file', new Blob([JSON.stringify(json)], { type:'application/json' }), 'opengym-strength.json');
       form.append('data_type','json');
       form.append('sport_type','WeightTraining');
       form.append('name',activity.name);
       form.append('description',activity.description);
-      form.append('external_id', String('opengym-' + (workout.id || job.key)).slice(0,120));
+      form.append('external_id', externalId);
       const r = await response(await fetchFn(STRUCTURED_UPLOAD_URL, {
         method:'POST', headers:{ Authorization:'Bearer ' + token }, body:form, signal:controller.signal,
       }));
@@ -93,6 +130,13 @@ export async function deliverStructuredStrength(job, token, workout, activity, {
       // the outbox from POSTing a duplicate activity on automatic retry.
       if (r.status >= 500) return { ok:false, retry:false, code:'unknown-upload', status:r.status,
         msg:'Strava may have accepted this upload. Inspect Strava before manually retrying.' };
+      // An explicit 401/429 rejection is known not to have created an
+      // upload: clear the attempt flag durably so refresh/backoff can retry.
+      if (r.status === 401 || r.status === 429) {
+        try { save({stravaUploadAttempted:false}); }
+        catch { return {ok:false,retry:false,code:'checkpoint',
+          msg:'Cannot safely save Strava retry state. Inspect Strava.'}; }
+      }
       if (r.status === 429) return { ok:false, retry:true, code:'rate', status:r.status,
         retryAfterMs:15 * 60_000 };
       if (r.status !== 200 && r.status !== 201)
@@ -100,7 +144,9 @@ export async function deliverStructuredStrength(job, token, workout, activity, {
       const id = r.data?.id_str ?? r.data?.id;
       if (id == null) return { ok:false, retry:false, code:'upload',
         msg:'Upload returned no ID; inspect Strava before retrying to avoid duplicates.' };
-      job.stravaUploadId = String(id);
+      try { save({stravaUploadId:String(id)}); }
+      catch { return {ok:false,retry:false,code:'checkpoint',
+        msg:'Strava accepted an upload, but its ID could not be saved. Inspect Strava before retrying.'}; }
     }
     const r = await response(await fetchFn(STRUCTURED_UPLOAD_URL + '/' + encodeURIComponent(job.stravaUploadId), {
       method:'GET', headers:{ Authorization:'Bearer ' + token }, signal:controller.signal,
