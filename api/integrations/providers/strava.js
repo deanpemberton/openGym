@@ -206,7 +206,7 @@ export function stravaProvider({ env = process.env, fetchFn = globalThis.fetch, 
     },
 
     /** One upload. `reveal(name)` opens a sealed secret, `reseal(map)` stores refreshed ones. */
-    async deliver(job, reveal, { reseal = () => {}, info = {} } = {}) {
+    async deliver(job, reveal, { reseal = () => {}, info = {}, checkpoint = () => {}, externalIdKey = null } = {}) {
       const w = job.payload?.data?.workout;
       if (job.ev === 'test') {
         // "Send test" checks the sign-in without posting an activity nobody did.
@@ -225,11 +225,11 @@ export function stravaProvider({ env = process.env, fetchFn = globalThis.fetch, 
       // Opt-in, reusing the same sealed OAuth credentials and durable outbox.
       // The outbox retains an accepted upload ID across restarts; never double-POST.
       if (String(env.STRAVA_STRUCTURED_STRENGTH || '') === '1' && act.sport_type === 'WeightTraining') {
-        let result = await deliverStructuredStrength(job, token, w, act, { fetchFn, timezone: env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' });
+        let result = await deliverStructuredStrength(job, token, w, act, { fetchFn, checkpoint, externalIdKey, timezone: env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' });
         if (result.status === 401) {
           const renewed = await refresh(reveal, reseal);
           if (renewed.error) return renewed.error;
-          result = await deliverStructuredStrength(job, renewed.access, w, act, { fetchFn, timezone: env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' });
+          result = await deliverStructuredStrength(job, renewed.access, w, act, { fetchFn, checkpoint, externalIdKey, timezone: env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' });
         }
         // A workout consisting entirely of exercises Strava does not support
         // still deserves an activity. No JSON POST was attempted when the
