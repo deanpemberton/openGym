@@ -268,7 +268,7 @@ export function createIntegrations({ dataDir, secret, env = process.env, now = D
           const eid = newId('evt');
           const r = outbox.enqueue({
             id: eid, key: `${c.provider}:${uid}:${c.id}:${ev.type}:${ev.entity}`, uid, conn: c.id, provider: c.provider, ev: ev.type,
-            payload: envelope({ id: eid, type: ev.type, data: eventData(ev, next), at: ev.at }),
+            payload: envelope({ id: eid, type: ev.type, data: eventData(ev, next, { provider: c.provider }), at: ev.at }),
           });
           if (r === 'queued') n++;
           else if (r === 'full') settle(uid, c.id, ev.type, { ok: false, msg: 'Too much waiting to be sent, this one was skipped.' }, false);
