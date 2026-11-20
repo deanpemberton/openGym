@@ -106,11 +106,25 @@ export function createOutbox({ file, deliver, rateOf = () => [], onSettled = () 
     if (body.length > PAYLOAD_MAX) return 'full';
     st.jobs.push({
       id: job.id, key: job.key, uid: job.uid, conn: job.conn, provider: job.provider, ev: job.ev,
-      payload: job.payload ?? null, attempts: 0, createdAt: now(), nextAt: now(),
+      payload: job.payload ?? null, attempts: 0, createdAt: now(), nextAt: now() + Math.min(120000, Math.max(0, Number(job.delayMs) || 0)),
     });
     persist();
     soon();
     return 'queued';
+  }
+
+  /** Refresh a queued Strava workout with late watch HR samples before the FIT is posted.
+   * Never rewrite a job already being delivered or accepted by Strava.
+   */
+  function updatePending(key, data) {
+    const j = st.jobs.find(x => x.key === key && !x.running && !x.uploadId)
+    if (!j || !j.payload || !data) return false
+    const payload = { ...j.payload, data }
+    if (JSON.stringify(payload).length > PAYLOAD_MAX) return false
+    j.payload = payload
+    j.nextAt = Math.max(j.nextAt, now() + 5000)
+    persist()
+    return true
   }
 
   async function runOne(j) {
@@ -160,6 +174,7 @@ export function createOutbox({ file, deliver, rateOf = () => [], onSettled = () 
 
   return {
     enqueue,
+    updatePending,
     run,
     start(everyMs = 5000) { if (!timer) { timer = setInterval(run, everyMs); timer.unref?.(); } soon(); },
     stop() { clearInterval(timer); clearTimeout(kick); timer = null; kick = null; },
