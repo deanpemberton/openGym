@@ -58,3 +58,35 @@ module, `strava-exercises.js`. The Flatnet API-only overlay image must copy
 all three files together. Importing the new mapper into the old two-file
 overlay will fail API startup. Leave the prior known-good API image available
 for rollback.
+
+
+## Catalogue-wide Strava exercise mapping
+
+The openGym catalogue contains 5,632 built-in exercises, including strength, cardio, mobility, stretching and yoga. Strava exposes a smaller fixed JSON strength exercise vocabulary. Not every openGym movement has a one-to-one Strava counterpart.
+
+Every openGym catalogue ID is evaluated with a deterministic outcome:
+
+- **exact:** Same official Strava type, or an explicitly reviewed stable-ID match.
+- **equivalent:** Curated synonym or precise equipment-specific equivalent.
+- **generic:** An official Strava movement family (for example SQUAT_GENERIC), only where the underlying movement is unambiguous.
+- **unsupported:** No defensible Strava type; the movement remains in the readable activity description but is omitted from structured sets.
+
+The resolver uses the built-in catalogue's IDs and canonical names, independent of translated interface labels. A user-created exercise maps only if its name exactly matches an official Strava type or a curated synonym; never guess from an arbitrary description.
+
+Strava's versioned exercise vocabulary is in api/integrations/providers/strava-exercises.js. The mapping logic is in api/integrations/providers/strava-exercise-map.js.
+
+### Reproducible mapping audit
+
+From api/ run:
+
+    node scripts/audit-strava-exercises.mjs
+    node scripts/audit-strava-exercises.mjs --csv > strava-coverage.csv
+    node --test test/strava-catalogue.test.js test/strava-strength.test.js test/strava-structured-integration.test.js
+
+The CSV contains one row per built-in exercise with source ID, name, body part, equipment, resolution kind and Strava type (blank for unsupported). Generate this from the catalogue rather than committing a second, stale copy of the 5,632-entry dataset.
+
+The catalogue test checks every ID and ensures every mapped value belongs to the documented Strava vocabulary; it also verifies locale independence and no arbitrary mapping of unknown custom exercises. The existing OAuth/outbox tests remain in CI.
+
+On successful delivery, verify actual exercises and muscle map in the Strava mobile app; the desktop web viewer may omit those native strength fields. Mixed workouts can include unsupported movements in the description even when those sets are absent from the structured Strava workout.
+
+Upstream contributions should prefer an accurate generic to a falsely precise mapping, and should prefer leaving a movement unsupported to giving athletes an incorrect muscle map. Never manufacture exercise_type identifiers from free text.
